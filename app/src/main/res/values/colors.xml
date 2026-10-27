@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  证道终端 · 颜色
+  ic_launcher_background 是图标底色（#0E1114，取自 assets/icon/README.md 的登记值）。
+  另外两个是壳页的暗底/前景，与图标同一色系（暗底 + 绿光标），避免启动闪白。
+-->
+<resources>
+    <color name="ic_launcher_background">#FF0E1114</color>
+    <color name="shell_background">#FF0E1114</color>
+    <color name="shell_accent">#FF6BE675</color>
+</resources>

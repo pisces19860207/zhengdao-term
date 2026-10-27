@@ -1,0 +1,33 @@
+# 证道终端 · 版本目录
+#
+# 只放骨架需要的：AGP / Kotlin / Compose / AndroidX 基础件。
+#
+# ⚠️ 库版本为什么比主仓旧：派工单把 compileSdk 钉在 **36**，而主仓用的
+# androidx.core 1.19 / Compose 1.12（BOM 2026.09）在 AAR 元数据里要求 **minCompileSdk 37**，
+# 用它们会直接编译失败（即使强行绕过检查，运行时也会调到 API 36 上不存在的符号）。
+# 所以这里取"最后一个还支持 compileSdk 36"的线：core-ktx 1.16 / activity 1.10 / BOM 2025.05。
+# 等本仓整体抬到 SDK 37 时再与主仓对齐（那时是一次统一的版本升级，不是这里顺手改）。
+# **刻意不引**任何第三方库（OkHttp、commons-compress、zstd 等）—— 那是终端内核搬入（第四刀）时的事，
+# 骨架期多引一个依赖，就等于在"还没有终端"的仓里先背一份供应链债。
+[versions]
+agp = "9.4.0"
+kotlin = "2.2.10"
+coreKtx = "1.16.0"
+activityCompose = "1.10.1"
+composeBom = "2025.05.01"
+junit = "4.13.2"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

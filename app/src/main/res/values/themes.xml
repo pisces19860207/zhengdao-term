@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  证道终端 · 主题
+  骨架期不引 Material Components（那是第三方 UI 库），所以父主题用平台自带的
+  Theme.Material.NoActionBar；真正的视觉由 Compose 的 Material3 主题接管。
+  windowBackground 先铺成图标底色，启动到首帧之间不闪白。
+-->
+<resources>
+    <style name="Theme.ZhengdaTerm" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/shell_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

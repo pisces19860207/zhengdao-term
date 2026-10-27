@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 证道终端 · English strings (values-en mirrors values/ one-to-one) -->
+<resources>
+    <string name="app_name">Zhengdao Terminal</string>
+
+    <string name="about_version">Version %1$s</string>
+    <string name="about_scope">Zhengdao itself is not in this repo (Baopu + Xuanlan live in the main repo)</string>
+    <string name="about_pending">Terminal core lands in the next batch</string>
+    <string name="about_license">First-party code: all rights reserved · third-party components keep their own licenses</string>
+    <string name="about_license_link">LICENSE</string>
+    <string name="about_repo_label">Repository</string>
+    <string name="about_repo">github.com/pisces19860207/zhengdao-term</string>
+</resources>
