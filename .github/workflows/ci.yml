@@ -118,6 +118,15 @@ jobs:
               exit 1
             }
           done
+          # 正文目录：licenses/ 下至少 8 份 .txt（Apache-2.0 / GPL-2.0 / GPL-3.0 / LGPL-3.0 /
+          # BSD-2-Clause / BSD-3-Clause / BSD-3-Clause-zstd / NOTICES）。清单说"正文在 licenses/"
+          # 就必须真有——否则三件齐备也只是空话。
+          n=$(ls licenses/*.txt 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$n" -lt 8 ]; then
+            echo "::error title=许可证正文缺失::licenses/ 只有 $n 份 .txt（应 ≥8），清单与正文不符"
+            exit 1
+          fi
+          echo "  · licenses/ 正文 $n 份"
           echo "[通过] 许可证三件齐备且点名了 Termux / proot / Debian"
 
       - name: 归档 APK（失败也能取）
