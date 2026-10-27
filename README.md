@@ -24,6 +24,12 @@
 
 两边可以装在同一台手机上，互不依赖；证道不会替终端做决定，终端也不接管抱朴。
 
+## 图标
+
+![证道终端图标](assets/icon/terminal-icon-512.png)
+
+暗底 `>_`，与主仓白底「证」+ 绿光标区分开；SVG 源文件与 Android 自适应图标资源在 [`assets/icon/`](assets/icon/)。
+
 ## 要求
 
 - **Android 16（API 36）或更高版本**
