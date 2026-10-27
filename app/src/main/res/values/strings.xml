@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  证道终端 · 中文文案（默认）
+  桌面名「证道终端」与 README 标题一致；英文见 values-en/。
+-->
+<resources>
+    <string name="app_name">证道终端</string>
+
+    <!-- 壳页 -->
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_scope">证道本体不在此仓（抱朴 ＋ 玄览在主仓）</string>
+    <string name="about_pending">终端内核待搬入（第四刀）</string>
+    <string name="about_license">第一方代码保留所有权利 · 第三方组件各按其许可证</string>
+    <string name="about_license_link">LICENSE</string>
+    <string name="about_repo_label">仓库</string>
+    <string name="about_repo">github.com/pisces19860207/zhengdao-term</string>
+    <string name="entry_step_grant">授予「所有文件访问」（终端要读写共享目录）</string>
+    <string name="entry_step_install">安装 Debian 环境（首次约 200 MB，需联网）</string>
+    <string name="entry_step_open">打开终端</string>
+    <string name="entry_action_grant">去授权</string>
+    <string name="entry_action_install">打开终端并安装环境</string>
+    <string name="entry_action_open">打开终端</string>
+    <string name="entry_hint">装环境与下载都在终端页里进行，进度可见；中途退出不会白下（支持断点续传）。</string>
+</resources>

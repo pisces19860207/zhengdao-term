@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 第二百四十八批：终端页（TerminalActivity）专用文案，随终端从主仓搬来。 -->
+<resources>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_later">Later</string>
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="term_browser_failed">Couldn\'t open a browser: %1$s</string>
+    <string name="term_clear_failed">Clear failed: %1$s</string>
+    <string name="term_cleared">Screen cleared</string>
+    <string name="term_clipboard_empty">Clipboard is empty</string>
+    <string name="term_close_split_cd">Close split pane</string>
+    <string name="term_close_terminal_cd">Close terminal</string>
+    <string name="term_first_run">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nWi-Fi recommended; resumable, so an interruption can be retried.\nTip: you can also place the installer into the Download/证道 folder manually and restart the app to install without downloading.</string>
+    <string name="term_first_run_need_grant">First run needs the runtime downloaded: about 326 MB to download, 1.5–2 GB on disk after extraction.\nTap \"Grant storage\" first — after granting, put the installer into the Download/证道 folder and reinstalling the app won\'t need another download.</string>
+    <string name="term_install_title">Install the runtime (Debian 13.7)</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_del">DEL</string>
+    <string name="term_key_down">↓</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_interrupt">^C</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_minus">\u002D</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pipe">|</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_shift">SHIFT</string>
+    <string name="term_key_slash">/</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_key_up">↑</string>
+    <string name="term_link_blocked">For safety, this link can\'t be opened inside the app</string>
+    <string name="term_link_confirm_open">Open</string>
+    <string name="term_link_confirm_title">Open this link?</string>
+    <string name="term_local_cache_installing">Using a locally cached package (%1$d MB, no download) — verifying and extracting…</string>
+    <string name="term_menu_clear">Clear screen</string>
+    <string name="term_menu_reset">Reset terminal</string>
+    <string name="term_menu_title">Terminal actions</string>
+    <string name="term_menu_web_search">Search selected text in Xuanlan</string>
+    <string name="term_no_network">No network: the proxy app was probably killed in the background. Restart it, or let Zhengdao go direct over the phone network (no proxy) — that works too</string>
+    <string name="term_no_selection">No text selected</string>
+    <string name="term_nothing_to_copy">Nothing to copy</string>
+    <string name="term_paste_failed">Paste didn\'t finish: %1$s</string>
+    <string name="term_pick_file">Pick from files</string>
+    <string name="term_reset_done">Terminal reset</string>
+    <string name="term_session_not_ready">Session isn\'t ready yet — can\'t paste</string>
+    <string name="term_split_cd">tmux split (top/bottom)</string>
+    <string name="term_start_download">Start download</string>
+    <plurals name="term_copied_chars">
+        <item quantity="one">Copied %1$d characters</item>
+        <item quantity="other">Copied %1$d characters</item>
+    </plurals>
+    <plurals name="term_copied_screen">
+        <item quantity="one">Copied the screen content (%1$d characters)</item>
+        <item quantity="other">Copied the screen content (%1$d characters)</item>
+    </plurals>
+    <plurals name="term_pasted">
+        <item quantity="one">Pasted %1$d characters</item>
+        <item quantity="other">Pasted %1$d characters</item>
+    </plurals>
+    <plurals name="term_pasting">
+        <item quantity="one">Pasting %1$d characters…</item>
+        <item quantity="other">Pasting %1$d characters…</item>
+    </plurals>
+    <string name="err_connect_fail">Couldn\'t reach the server (check the network)</string>
+    <string name="err_disk_full">Not enough storage space</string>
+    <string name="err_file_exists">A file with the same name already exists at the destination</string>
+    <string name="err_file_not_found">File not found</string>
+    <string name="err_file_too_large">File too large</string>
+    <string name="err_generic">Something went wrong (%1$s)</string>
+    <string name="err_host_not_found">Server not found (check the network)</string>
+    <string name="err_io">File read/write failed</string>
+    <string name="err_net_interrupted">Connection lost (try again)</string>
+    <string name="err_net_timeout">Network timed out (try again)</string>
+    <string name="err_no_permission">Permission denied</string>
+    <string name="err_no_write">No write permission</string>
+    <string name="err_ssl_fail">Secure connection failed (check the network)</string>
+    <string name="err_unknown_type">unknown type</string>
+</resources>

@@ -1,0 +1,36 @@
+# 证道终端 · 忽略规则（Android 标准）
+#
+# 目标：克隆下来直接能 build，且**绝不**把本机/产物/密钥提交上去。
+# 派工单负例⑥就是"提交里带 build/、local.properties、keystore"，这三类在下面都钉死了。
+
+# Gradle / 构建产物
+.gradle/
+build/
+*/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# 本机配置（SDK 路径、签名口令）
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# 安装包与映射（产物不进仓，发版走 Releases）
+*.apk
+*.aab
+*.ap_
+*.dex
+mapping.txt
+output-metadata.json
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

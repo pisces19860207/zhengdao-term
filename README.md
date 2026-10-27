@@ -45,6 +45,22 @@
 
 环境包支持断点续传与差分更新；网络抖动不用从头下。
 
+## 权限（为什么需要，照实说）
+
+安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限；运行时申请与授权流程随终端内核一起进来（当前骨架期不会弹任何权限框）。
+
+| 权限 | 为什么需要 |
+|---|---|
+| `INTERNET` / `ACCESS_NETWORK_STATE` | 首次下载 Debian rootfs（约 200 MB）、`apt` 联网、你跑的联网命令；以及判断"现在能不能下" |
+| `MANAGE_EXTERNAL_STORAGE`（所有文件访问） | **与 Termux 同款**：proot 里的进程就是 App 的 UID，要读写你选定的共享目录（`Download/证道`）就必须有它。⚠️ 这条**不能由 App 自己申请**，必须你在「系统设置 → 应用 → 证道终端 → 所有文件访问」里**单独授权**；不授权时终端只能在自己的私有目录里工作 |
+| `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` | 共享存储的历史通道。Android 16 下这两条已不再授予共享存储访问，保留声明只为与主仓清单形态一致；真正通道是上一条 |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_SPECIAL_USE` | 长会话保活：离开终端页后会话要继续跑。终端会话不属于任何既有前台服务类型，故用 `specialUse` |
+| `POST_NOTIFICATIONS` | 保活通知（Android 13+ 运行时权限；不给就发不出，保活等于没提示） |
+| `WAKE_LOCK` | 前台服务里持 `PARTIAL_WAKE_LOCK`，屏幕灭了会话不被 CPU 休眠掐断 |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | 一键跳「电池优化白名单」，只在**你确认后**跳转，不静默申请 |
+
+**终端不是沙箱**（见下节），给了全盘权限之后更是如此：只运行你信任的命令。
+
 ## 安全（照实说）
 
 ⚠️ **终端不是安全沙箱**：里面的进程与 App 是同一个 Android UID、同一个内核与网络栈，能读写 App 能读写的文件。只运行你信任的命令；不要拿它跑来源不明的脚本。
@@ -58,6 +74,21 @@
   - Debian rootfs 及其中的软件包（各自许可证）
   - JetBrains Maple Mono 字体（OFL-1.1）
 - 许可证正文随安装包内置；完整清单见主仓 `THIRD-PARTY-LICENSES.md` 与 `PROVENANCE.md`。
+- 本仓自己的同名文件：`LICENSE`（第一方条款）、`PROVENANCE.md`（来源与出处）、`THIRD-PARTY-LICENSES.md`（第三方清单与义务）。
+
+## 构建
+
+官方包的构建口径（写在这里是为了可复现与可审计；**许可仍以 `LICENSE` 为准**——它不授权自行构建后再分发）：
+
+- JDK 21、Gradle 9.6（wrapper 自带，无需另装）、AGP 9.4.0、Kotlin 2.2.10
+- `compileSdk` / `minSdk` / `targetSdk` = 36；ABI 只打 `arm64-v8a`
+- `applicationId` = `com.example.zhengdao.term`（与证道主仓 `com.example.zhengdao` 不同，可并存安装）
+
+```bash
+./gradlew :app:assembleDebug      # 产物：app/build/outputs/apk/debug/app-debug.apk
+```
+
+本仓只有 `:app` 一个模块；终端内核（PTY / rootfs / proot）与共享层会在后续批次整模块迁入，届时构建脚本再动。
 
 ## 致谢
 

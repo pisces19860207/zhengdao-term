@@ -1,0 +1,14 @@
+# 证道终端 · 行尾与二进制口径
+#
+# 为什么要有这个文件：仓在 Windows 上开发，但 `gradlew` 是 shell 脚本——
+# 一旦它以 CRLF 入库，Linux/macOS/CI 上 `./gradlew` 会直接 `bad interpreter`。
+# 所以：文本一律 LF（Windows 专用的 .bat 除外），二进制显式声明。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制（别让 git 做行尾转换/合并）
+*.jar binary
+*.png binary
+*.apk binary
+*.so binary

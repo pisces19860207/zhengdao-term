@@ -1,0 +1,138 @@
+name: CI
+
+# 证道终端（zhengdao-term）· CI
+#
+# 三道闸，按「错了会在真机上炸」的优先级排：
+#   1. **能编**：assembleDebug 过（两模块 + NDK 编 libtermux.so）
+#   2. **入库 .so 对不对**：APK 里每个 .so 的 PT_LOAD 段必须 16KB 页对齐
+#      （漏了不崩、只在 16KB 页设备上 loadLibrary 失败 → 悄悄退回 Java，最难查）
+#   3. **许可证三件在**：LICENSE / THIRD-PARTY-LICENSES.md / PROVENANCE.md 必须存在且非空
+#      （本仓分发 Termux(Apache-2.0) / proot(GPL-2.0) / Debian rootfs，缺一份就是合规缺口）
+#
+# 与主仓（zhengdao）的 CI 是**两套**：那边不再编 C/C++、也不带终端组件，两边门禁不共用。
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 缓存 Gradle（依赖 + wrapper）
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-term-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-term-${{ runner.os }}-
+
+      - name: 授权 gradlew
+        run: chmod +x gradlew
+
+      - name: 编译 Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: 单元测试（失败即红）
+        run: ./gradlew :app:testDebugUnitTest :terminal-core:testDebugUnitTest --console=plain
+
+      # 16KB 页对齐：与主仓 tools/check-native-so.py 的判据 1 同一条，只是不依赖主仓脚本
+      # （两仓不共享源码/工具链）。proot 四件套按上游现状是 4KB 构建，这里只对
+      # **会被 loadLibrary 的库**硬判，被 execve 的独立 ELF 只做存在性检查。
+      - name: 入库 .so 门禁（16KB 页对齐）
+        run: |
+          python3 - <<'PY'
+          import glob, struct, sys, zipfile
+
+          EXEC_ONLY = {"libproot.so", "libproot-loader.so", "libandroid-shmem.so", "libtalloc.so"}
+          PT_LOAD = 1
+          MIN_ALIGN = 0x4000
+
+          def loads(data):
+              e_phoff = struct.unpack_from("<Q", data, 0x20)[0]
+              e_phentsize, e_phnum = struct.unpack_from("<HH", data, 0x36)
+              for i in range(e_phnum):
+                off = e_phoff + i * e_phentsize
+                p_type = struct.unpack_from("<I", data, off)[0]
+                if p_type == PT_LOAD:
+                    yield struct.unpack_from("<Q", data, off + 0x30)[0]
+
+          apks = glob.glob("app/build/outputs/apk/debug/*.apk")
+          assert apks, "没有产出 APK"
+          bad, checked = [], 0
+          with zipfile.ZipFile(apks[0]) as z:
+              names = [n for n in z.namelist() if n.endswith(".so")]
+              assert names, "APK 里一个 .so 都没有 —— 门禁失去意义"
+              for n in names:
+                  base = n.rsplit("/", 1)[-1]
+                  data = z.read(n)
+                  aligns = list(loads(data))
+                  checked += 1
+                  if base in EXEC_ONLY:
+                      print(f"  · {base}: 只做存在性检查（被 execve 的独立 ELF，上游 4KB 构建）")
+                      continue
+                  worst = min(aligns) if aligns else 0
+                  if worst < MIN_ALIGN:
+                      bad.append(f"{n}: 最小 p_align=0x{worst:x} < 0x{MIN_ALIGN:x}")
+                  else:
+                      print(f"  · {base}: p_align=0x{worst:x} ✓")
+          if bad:
+              print("::error title=16KB 页对齐门禁失败::" + "；".join(bad))
+              sys.exit(1)
+          print(f"[通过] {checked} 个 .so 检查完毕")
+          PY
+
+      - name: 许可证三件门禁
+        run: |
+          set -euo pipefail
+          for f in LICENSE THIRD-PARTY-LICENSES.md PROVENANCE.md; do
+            if [ ! -s "$f" ]; then
+              echo "::error title=许可证缺失::$f 不存在或为空（本仓分发 Termux/proot/Debian，三件缺一不可）"
+              exit 1
+            fi
+            echo "  · $f 就位（$(wc -c < "$f") B）"
+          done
+          # 第三方清单必须点名这三类组件（少了就是没登记）
+          for k in Termux proot Debian; do
+            grep -qi "$k" THIRD-PARTY-LICENSES.md || {
+              echo "::error title=第三方清单缺项::THIRD-PARTY-LICENSES.md 里没有登记 $k"
+              exit 1
+            }
+          done
+          # 正文目录：licenses/ 下至少 8 份 .txt（Apache-2.0 / GPL-2.0 / GPL-3.0 / LGPL-3.0 /
+          # BSD-2-Clause / BSD-3-Clause / BSD-3-Clause-zstd / NOTICES）。清单说"正文在 licenses/"
+          # 就必须真有——否则三件齐备也只是空话。
+          n=$(ls licenses/*.txt 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$n" -lt 8 ]; then
+            echo "::error title=许可证正文缺失::licenses/ 只有 $n 份 .txt（应 ≥8），清单与正文不符"
+            exit 1
+          fi
+          echo "  · licenses/ 正文 $n 份"
+          echo "[通过] 许可证三件齐备且点名了 Termux / proot / Debian"
+
+      - name: 归档 APK（失败也能取）
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: zhengdao-term-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7

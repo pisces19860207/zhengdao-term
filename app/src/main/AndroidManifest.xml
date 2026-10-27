@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  证道终端（zhengdao-term）· 应用清单（骨架）
+
+  本刀只立骨架：**权限全部"只声明、不申请"**——运行时申请与授权流程随终端内核一起进来
+  （第四刀）。现在声明，是为了让"这个 App 将来要什么"在仓库里一眼可查，而不是等搬代码时
+  才一次性塞进来、没人审。
+
+  每一条为什么需要，README「权限」一节有对用户的话术（尤其是全盘权限：与 Termux 同款，
+  必须用户在系统设置里单独授权，App 不能自己给自己开）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 终端本身不需要网络就能用；要联网的是：首次下载 Debian rootfs（约 200 MB）、
+         apt update / apt install、以及用户自己跑的任何联网命令。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 判断网络是否可用（下载器要决定"现在能不能下 / 是不是断点续传"），
+         不读它就只能靠猜。normal 权限，声明即授予。 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 共享存储直通：把手机存储绑进 Debian 环境（工作区在 Download/证道）。
+         ⚠️ READ 的 maxSdkVersion 帽子与主仓一致——**不写帽子**：主仓实测（2026-10-06）
+         带 maxSdkVersion=32 会让 Android 16 上的 App 只有 WRITE 没有 READ，
+         共享存储"能写不能读"，终端里找不到用户文件。 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- 共享存储写通道（历史遗留）：targetSdk 36 下它不再授予任何共享存储访问，
+         保留声明只为与主仓清单形态一致（真正通道是下面的「所有文件访问」）。 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- 全盘文件访问：Debian 环境要能读写用户选定的共享目录（Download/证道），
+         而 proot 里的进程就是 App 的 UID，没有这条就只能在 App 私有目录里打转。
+         ScopedStorage 的 lint 警告是预期的（这条权限天生如此），显式 ignore。 -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- 保活：长会话前台服务（会话在用户离开终端页后仍要活着）。
+         API 34+ 起 FOREGROUND_SERVICE 之外还要类型专属权限，终端会话不属于任何既有类型
+         ⇒ specialUse（与主仓同一口径，理由见主仓 AndroidManifest 的注释）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 前台服务的通知（Android 13+ 运行时权限；不声明就发不出通知，保活等于没提示）。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 前台服务里持 PARTIAL_WAKE_LOCK：屏幕灭了会话不被 CPU 休眠掐断。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 一键跳"电池优化白名单"：只在用户确认后跳转，不静默申请。
+         本项目走 GitHub 旁加载分发，不受 Play 对该权限的政策限制。 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ZhengdaTerm">
+
+        <!-- 入口页（第四刀换成真入口：授权 → 装环境 → 打开终端） -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 终端页（随终端内核一起从主仓搬来；包名与主仓同名同物） -->
+        <activity
+            android:name="com.example.zhengdao.TerminalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Zhengdao.Terminal"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
+        <!-- 会话保活前台服务（SessionService 在 :terminal-core 里，包名不变） -->
+        <service
+            android:name="com.example.zhengdao.terminal.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
+        </service>
+    </application>
+
+</manifest>
