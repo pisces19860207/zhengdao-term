@@ -61,7 +61,13 @@
 
 ## 致谢
 
-终端层建立在 Termux、PRoot、Debian 与这些开源项目之上；没有它们就没有「手机上免 root 跑 Linux」这件事。
+终端层建立在这些开源项目之上；没有它们就没有「手机上免 root 跑 Linux」这件事：
+
+- [Termux](https://github.com/termux/termux-packages) —— proot 的 Android 适配发行版，以及 terminal-emulator / terminal-view 终端引擎
+- [proot-me/proot](https://github.com/proot-me/proot) —— 免 root 跑起整套 Linux 环境的基石
+- [astral-sh/uv](https://github.com/astral-sh/uv) —— Hermes 等 Agent 环境安装用的 Python 包管理器
+- [Debian](https://www.debian.org/) —— 13 作为终端环境底座
+- [JetBrains Maple Mono](https://github.com/subframe7536/maple-font) —— 终端字体（OFL-1.1）
 
 ---
 
