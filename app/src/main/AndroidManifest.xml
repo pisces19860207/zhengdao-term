@@ -55,7 +55,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ZhengdaTerm">
 
-        <!-- 只有一个入口：壳页。终端页随内核一起进来（第四刀）。 -->
+        <!-- 入口页（第四刀换成真入口：授权 → 装环境 → 打开终端） -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -65,6 +65,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 终端页（随终端内核一起从主仓搬来；包名与主仓同名同物） -->
+        <activity
+            android:name="com.example.zhengdao.TerminalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Zhengdao.Terminal"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density|uiMode" />
+
+        <!-- 会话保活前台服务（SessionService 在 :terminal-core 里，包名不变） -->
+        <service
+            android:name="com.example.zhengdao.terminal.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Long-running terminal session keepalive: a user-driven Debian shell session must survive leaving the terminal UI, and no other FGS type covers a long shell session" />
+        </service>
     </application>
 
 </manifest>

@@ -10,4 +10,11 @@
     <string name="about_license_link">LICENSE</string>
     <string name="about_repo_label">Repository</string>
     <string name="about_repo">github.com/pisces19860207/zhengdao-term</string>
+    <string name="entry_step_grant">Grant "All files access" (the terminal reads/writes shared storage)</string>
+    <string name="entry_step_install">Install the Debian environment (~200 MB, needs network)</string>
+    <string name="entry_step_open">Open the terminal</string>
+    <string name="entry_action_grant">Grant access</string>
+    <string name="entry_action_install">Open terminal and install</string>
+    <string name="entry_action_open">Open terminal</string>
+    <string name="entry_hint">Download and install run inside the terminal page, with visible progress; leaving mid-way does not restart from zero (resumable).</string>
 </resources>

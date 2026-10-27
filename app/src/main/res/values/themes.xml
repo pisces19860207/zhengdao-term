@@ -11,4 +11,10 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- 终端页主题：windowBackground = null，让 TerminalView 的底色直接透出来（不闪白）。
+         主仓那份继承自 Theme.Zhengdao（整套品牌色），本仓只保留"终端页真正用到的那一条"。 -->
+    <style name="Theme.Zhengdao.Terminal" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@null</item>
+    </style>
 </resources>

@@ -16,6 +16,13 @@ coreKtx = "1.16.0"
 activityCompose = "1.10.1"
 composeBom = "2025.05.01"
 junit = "4.13.2"
+# 单测里的 org.json 真实实现（android.jar 的 stub 一律 "not mocked"）
+jsonVersion = "20240303"
+# 终端内核（:terminal-core）要的：rootfs 下载/解压、PTY 依赖
+okhttp = "4.12.0"
+commonsCompress = "1.26.2"
+commonsLang3 = "3.18.0"
+zstdJni = "1.5.6-4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,7 +34,18 @@ androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+json = { group = "org.json", name = "json", version.ref = "jsonVersion" }
+# 第二百四十八批（第四刀）：随终端内核一起进来的运行时依赖（版本与主仓一致）
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
+zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime" }
+# 入口页要跟着 ON_RESUME 刷新授权/安装状态（LocalLifecycleOwner 的官方载体）
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version = "2.8.7" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+# 第二百四十八批：终端内核是个库模块（:terminal-core），需要 android-library 插件
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

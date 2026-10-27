@@ -22,8 +22,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // 主仓把 :core / :native-core 发布到 mavenLocal（com.example.zhengdao:zhengdao-core:2.2.1）。
+        // 两仓**不共享源码**，只共享这个产物（设计稿 §1 选型①）。
+        mavenLocal()
     }
 }
 
 rootProject.name = "zhengdao-term"
 include(":app")
+// 终端内核（第四刀从主仓整模块搬入；主仓已删）
+include(":terminal-core")

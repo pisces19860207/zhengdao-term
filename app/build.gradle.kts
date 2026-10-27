@@ -12,7 +12,10 @@ android {
     // 装这个不会覆盖主 APP（覆盖 = 用户丢数据，见派工单负例②）。
     namespace = "com.example.zhengdao.term"
     compileSdk {
-        version = release(36)
+        // 第四刀：**只有 compileSdk 抬到 37** —— 主仓发布的 zhengdao-core / zhengdao-native
+        // 是在 37 下编的，AAR 元数据写死 minCompileSdk=37，36 编不过。
+        // minSdk / targetSdk 仍是 36（README 的「Android 16+」不变，装机能装的还是 36+）。
+        version = release(37)
     }
 
     defaultConfig {
@@ -54,6 +57,11 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // 与主仓同口径：单测里 android.util.Log 之类返回默认值，不抛 "not mocked"
+        unitTests.isReturnDefaultValues = true
+    }
+
     lint {
         // 骨架期只有壳页；targetSdk 已是当前最新，关掉"该升 targetSdk"的噪声。
         disable += "ExpiredTargetSdkVersion"
@@ -61,8 +69,15 @@ android {
 }
 
 dependencies {
+    // 第二百四十八批（第四刀）：终端内核整模块搬进来了
+    implementation(project(":terminal-core"))
+    // 门禁测试直接引用终端内核的类（断言源码/行为），单测也要能看见
+    testImplementation(project(":terminal-core"))
+    testImplementation(libs.junit)
+    testImplementation(libs.json)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // Compose 基础件（BOM 统一版本；不含任何第三方 UI 库）
     implementation(platform(libs.androidx.compose.bom))
