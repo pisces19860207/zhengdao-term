@@ -57,9 +57,10 @@ android {
 
 dependencies {
     // 单向：:terminal-core → :core（RunLog / ZhengdaoDirs / AppPrefs / TimeFormats / kb / notify）
-    api("com.example.zhengdao:zhengdao-core:2.2.1")
+    // 2026-10-27：改为**随仓携带的 AAR**（libs/），CI 不再依赖 mavenLocal 或另一仓库的发布
+    api(files("../libs/zhengdao-core-2.2.1.aar"))
     // Rust 核（rootfs 的 sha256/解压/验签）由 :native-core 提供，与 :app 共用同一份 .so
-    api("com.example.zhengdao:zhengdao-native:2.2.1")
+    api(files("../libs/zhengdao-native-2.2.1.aar"))
 
     // EnvironmentScope 之外的工具（ContextCompat 等）
     implementation(libs.androidx.core.ktx)
