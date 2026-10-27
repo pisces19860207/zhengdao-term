@@ -26,6 +26,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
+import com.example.zhengdao.core.PathGuard
 
 /**
  * RootFS 解压安装器（设计文档 §6/§8）：

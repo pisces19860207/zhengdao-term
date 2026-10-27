@@ -6,6 +6,7 @@ import android.content.Context
 import com.example.zhengdao.core.RunLog
 import java.io.File
 import com.example.zhengdao.terminal.ProotLauncher
+import com.example.zhengdao.core.PathGuard
 
 /**
  * 安装包缓存（用户第三批；2026-10-08 与 OpenCode 包并到同一个父目录）。
