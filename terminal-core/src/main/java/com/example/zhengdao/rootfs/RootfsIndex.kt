@@ -162,40 +162,105 @@ object RootfsIndexFetcher {
      * 只有"发布方私钥签名 + App 内置公钥验签"才能让这种情况变成**装不上**而不是照单全收。
      * 这与 `agents.json` 的处理一致（那边是"验签不过 = 整份拒绝"）。
      *
-     * ⚠️ 三种失败必须**看得见区分**，不能都表现成"没查到更新"：
-     * ① 拿不到（网络/源不可达）→ 沿用既有降级；
-     * ② 拿到但**没有签名** → 拒绝使用（未验证的 sha256 不能当校验值）；
-     * ③ 有签名但**验不过** → 拒绝使用 + 明确留痕（这是安全事件）。
+     * 三种失败**必须由调用方看得见区分**（[FetchResult]），不能都表现成"没查到更新"：
+     * ① 一个源都拿不到 → [FetchResult.Unreachable]（网络/源不可达）；
+     * ② 拿到但**没有合法签名** → [FetchResult.Unsigned]（未验证的 sha256 不能当校验值）；
+     * ③ 有签名但**验不过** → [FetchResult.BadSignature]（安全事件，必须留痕）。
+     *
+     * 多源策略（这是 267 的核心之一）：**每个源各自取索引 + 各自的 `.sig` 各自验**，
+     * 任一源通过即通过。理由：签名是密码学结论，不分通道；而镜像（ghfast.top / gh-proxy）
+     * 常把 404/限流变成 200 + HTML 错误页，把那种响应当"签名不符"会误报"发布端被篡改"。
+     * 因此格式不合法的 `.sig` 一律算**该源没给签名**，不算篡改。
+     *
+     * @param fetchBytes 取字节的注入口（仅测试会换掉；生产走 [RootfsDownloader.fetchBytes]）。
      */
-    fun fetch(): RootfsIndex? {
-        var sawUnverified = false
-        for (u in RootfsDownloader.withMirrorFallback(URL)) {
-            val bytes = runCatching { RootfsDownloader.fetchBytes(u) }.getOrNull() ?: continue
-            val sig = runCatching { RootfsDownloader.fetchBytes(signatureUrl(u)) }
-                .getOrNull()?.let { String(it, Charsets.UTF_8) }
-            if (sig.isNullOrBlank()) {
-                sawUnverified = true
+    fun fetch(
+        indexUrl: String = URL,
+        fetchBytes: (String) -> ByteArray? = RootfsDownloader::fetchBytes,
+    ): FetchResult {
+        var badSigSource: String? = null
+        var unsignedSource: String? = null
+        var malformedSource: String? = null
+        for (u in RootfsDownloader.withMirrorFallback(indexUrl)) {
+            val bytes = runCatching { fetchBytes(u) }.getOrNull() ?: continue
+            val sig = runCatching { fetchBytes(signatureUrl(u)) }.getOrNull()
+                ?.toString(Charsets.UTF_8)
+                ?.let { normalizeSignature(it) }
+            if (sig == null) {
+                if (unsignedSource == null) unsignedSource = u
                 continue
             }
             if (!verifySignature(bytes, sig)) {
-                Log.w("RootfsIndexFetcher", "索引验签失败（已试全部源），不使用该索引")
-                RunLog.log(
-                    "环境索引验签失败：发布源被篡改，或签名密钥已轮换。已拒绝使用该索引" +
-                        "（从本地文件安装环境不受影响）",
-                )
-                return null
+                if (badSigSource == null) badSigSource = u
+                Log.w("RootfsIndexFetcher", "该源的索引验签不通过：$u")
+                continue
             }
             val parsed = runCatching {
                 RootfsIndexParser.parse(String(bytes, Charsets.UTF_8))
             }.getOrNull()
-            if (parsed != null) return parsed
+            if (parsed == null) {
+                if (malformedSource == null) malformedSource = u
+                continue
+            }
+            Log.i("RootfsIndexFetcher", "索引验签通过：$u")
+            return FetchResult.Ok(parsed, u)
         }
-        Log.w(
-            "RootfsIndexFetcher",
-            if (sawUnverified) "索引不可信（源上只有未签名版本），调用方按老路径降级"
-            else "索引抓取失败（已试全部源），调用方按老路径降级",
-        )
-        return null
+        badSigSource?.let {
+            // 到了这里说明所有源都没通过，且至少有一个源给出了"格式合法但验不过"的签名。
+            RunLog.log(
+                "环境索引验签失败：内容与发布方签名不符（发布源可能被篡改，或签名密钥已更换）。" +
+                    "已拒绝使用该索引，联网安装已停止",
+            )
+            return FetchResult.BadSignature(it)
+        }
+        malformedSource?.let { return FetchResult.Malformed(it) }
+        unsignedSource?.let { return FetchResult.Unsigned(it) }
+        Log.w("RootfsIndexFetcher", "索引抓取失败（已试全部源，一个字节都没拿到）")
+        return FetchResult.Unreachable
+    }
+
+    /**
+     * 签名格式预检：base64 解出**恰好 64 字节**（Ed25519 签名长度）才算"这个源给了签名"。
+     *
+     * 为什么要有这一步（而不是直接 `verifySignature` 拿到 false 就判篡改）：
+     * 镜像把 `404 Not Found` 变成 `200` + 一页 HTML 是常态（实测 ghfast.top 会返回图文错误页）。
+     * 那种字节 base64 解不出来，判成"篡改"就是冤枉发布方；但也不能放行 ——
+     * 它照样落进 [FetchResult.Unsigned]，而 [IndexTrust] 对 Unsigned 同样是拒绝安装。
+     *
+     * @return 去掉空白后的签名串；格式不合法返回 null。
+     */
+    fun normalizeSignature(raw: String): String? {
+        val s = raw.filterNot { it.isWhitespace() }
+        if (s.isEmpty() || s.length > 128) return null
+        return try {
+            if (Base64.getDecoder().decode(s).size == 64) s else null
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 索引抓取的四种结果。
+     *
+     * 为什么要密封类型而不是 `RootfsIndex?`：以前一律返回 null，调用方无法区分
+     * "没网"与"验签不过"，最终两者都退化成"拿明文 `$url.sha256` 校验"——
+     * 而那份 sha256 与包同源，能改包的人也能改它，等于**验签白做**（267 前的真实状态）。
+     */
+    sealed interface FetchResult {
+        /** 验签通过 + 解析成功。 */
+        data class Ok(val index: RootfsIndex, val source: String) : FetchResult
+
+        /** 一个源都没拿到索引字节（网络不通 / 资产不存在 / 全被拦）。 */
+        data object Unreachable : FetchResult
+
+        /** 拿到了索引，但没有任何源给出格式合法的签名（缺 `.sig` / 空 / 不是 64 字节 base64）。 */
+        data class Unsigned(val source: String) : FetchResult
+
+        /** 拿到了索引和格式合法的签名，但验不过：**可能被篡改，也可能密钥已轮换**。 */
+        data class BadSignature(val source: String) : FetchResult
+
+        /** 验签通过但解析不出来（半截索引 / 脏数据）。 */
+        data class Malformed(val source: String) : FetchResult
     }
 }
 
