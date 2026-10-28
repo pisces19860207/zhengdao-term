@@ -1749,7 +1749,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         return installing.compareAndSet(false, true)
     }
 
-    /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
+    /**
+     * SAF 选中归档：拷入公共缓存 → **直接解压** → 切 Debian（压缩包保留，重装免下载）。
+     *
+     * ⚠️ 这条路上**没有任何校验**：用户自选包没有可比对的校验值（见下面的传参注释），
+     * Rust 解包拿到 `expectedSha256 = null` 就只解包不对账。别把它和
+     * [startInstallFromFile] 混为一谈——后者走 `IndexTrust.gateForLocal` 并在校验那步
+     * `verifySha256`。要拦"改过一字节的包"，得走后者或联网安装那条路。
+     */
     private fun installFromSafUri(uri: android.net.Uri) {
         if (!claimInstallSlot()) return
         val appContext = applicationContext
