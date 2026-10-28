@@ -27,24 +27,11 @@ class RootfsIndexSignatureTest {
     // ── 真实发布物（rootfs-13.7-2026.10.28 的 rootfs-index.json，469 字节） ──
     // 不造假索引：用线上那份逐字节复制，再配上 2026-10-28 用生产私钥签出来的 .sig。
     // 这样"正确索引通过"这条测的是**生产密钥链**，不是测试里现搓的一对玩具钥匙。
-    private val realIndex: ByteArray = (
-        listOf(
-            "{",
-            "  \"schema\": 2,",
-            "  \"distro\": \"debian-13.7\",",
-            "  \"version\": \"13.7\",",
-            "  \"env\": \"f29b58512d083c96\",",
-            "  \"builtAt\": \"2026-10-23T06:42:08Z\",",
-            "  \"url\": \"https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/debian-13.7-base-arm64.tar.zst\",",
-            "  \"sha256\": \"8d2f32e5a505ef0680b29e93d8b7422e0c0ea7b4212cd0df09c1adebdd473683\",",
-            "  \"size\": 200223802,",
-            "  \"manifestUrl\": \"https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/rootfs-manifest.txt\",",
-            "  \"patch\": null",
-            "}",
-        ).joinToString("\n") + "\n"
-        ).toByteArray(Charsets.UTF_8)
+    private val realIndex: ByteArray = java.util.Base64.getMimeDecoder().decode(
+        "ewogICJzY2hlbWEiOiAyLAogICJkaXN0cm8iOiAiZGViaWFuLTEzLjciLAogICJ2ZXJzaW9uIjogIjEzLjciLAogICJlbnYiOiAiZjI5YjU4NTEyZDA4M2M5NiIsCiAgImJ1aWx0QXQiOiAiMjAyNi0xMC0yM1QwNjo0MjowOFoiLAogICJ1cmwiOiAiaHR0cHM6Ly9naXRodWIuY29tL3Bpc2NlczE5ODYwMjA3L3poZW5nZGFvLXRlcm0vcmVsZWFzZXMvZG93bmxvYWQvcm9vdGZzLTEzLjctMjAyNi4xMC4yOC9kZWJpYW4tMTMuNy1iYXNlLWFybTY0LnRhci56c3QiLAogICJzaGEyNTYiOiAiOGQyZjMyZTVhNTA1ZWYwNjgwYjI5ZTkzZDhiNzQyMmUwYzBlYTdiNDIxMmNkMGRmMDljMWFkZWJkZDQ3MzY4MyIsCiAgInNpemUiOiAyMDAyMjM4MDIsCiAgIm1hbmlmZXN0VXJsIjogImh0dHBzOi8vZ2l0aHViLmNvbS9waXNjZXMxOTg2MDIwNy96aGVuZ2Rhby10ZXJtL3JlbGVhc2VzL2Rvd25sb2FkL3Jvb3Rmcy0xMy43LTIwMjYuMTAuMjgvcm9vdGZzLW1hbmlmZXN0LnR4dCIsCiAgInBhdGNoIjogbnVsbAp9Cg==",
+    )
 
-    private val realSig = "nJxbZMLLxL3s82XPmA2MUeemrm1rRTng42mWtKcS/YtBEMVa3LEnRxfL5swRF0oP8jvfNIfUrdAxNVQZFcZpDA=="
+    private val realSig = "+rDO0SK9gepszpq/eLRBzQyQh94QcDiUyZR48xYwWqy7J6i1ZBGLeQnlbX/bd3+utcjpTKl1AVGdc2erJjNgBA=="
 
     private val direct = RootfsIndexFetcher.URL
 
@@ -57,9 +44,9 @@ class RootfsIndexSignatureTest {
 
     @Test
     fun `fixture 与线上字节逐字节一致`() {
-        assertEquals(469, realIndex.size)
+        assertEquals(511, realIndex.size)
         assertEquals(
-            "2f7755f509871e1cf06be80e70d9f3e0e563c2354171d1d092c751733e1268fb",
+            "5feb14a0bf4af70e117ca57caefff3a393b4e5fa2c2e5ed6ab0ac458ae3c063c",
             sha256Hex(realIndex),
         )
     }
