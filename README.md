@@ -46,6 +46,15 @@
 
 环境包支持断点续传与差分更新；网络抖动不用从头下。
 
+> **环境包从哪来**（2026-10-28 起，第二百六十批改订二的裁定）：**主仓 Releases 里的 rootfs 资产自 2026-10-28 起
+> 冻结，不再更新；新环境包见 [zhengdao-term Releases](https://github.com/pisces19860207/zhengdao-term/releases)。**
+> 主仓那批旧资产**不删**——老版本 App 装机还要按老 URL 来取。搬迁（把 rootfs 资产发进本仓 Releases、
+> 再把索引 URL 改指过来）由蓝总管在飞；**截至本条提交还没搬完**，实测：本仓 Releases 只有 `v0.1.0` 一个资产
+> （`zhengdao-term-0.1.0-debug.apk` 38,897,816 B，2026-10-27T13:34:40Z）、rootfs 资产 **0 件**，
+> `terminal-core/src/main/java/com/example/zhengdao/rootfs/RootfsIndex.kt:133` 仍指向主仓
+> `releases/download/latest/rootfs-index.json`。⇒ 上面那句「差分更新」要等本仓的 rootfs 发布流水线真正落地
+> 才会发生；缺口登记在 [`PROVENANCE.md`](PROVENANCE.md) §8.4，别读成「已经解决」。
+
 ## 权限（为什么需要，照实说）
 
 安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限。本仓**没有应用内的权限对话框**：全仓唯一的授权动作是

@@ -110,7 +110,23 @@ git 历史留在主仓；`com.termux.**` 是上游）。两边关系：
    重建 RootFS」改成恒 `false`，`c331db18`（09:34）又删掉主仓 `build.yml` 里构建 → Ed25519 签名 →
    `gh release upload latest` 那 8 个步骤；构建脚本本仓接手了（`rootfs/build-rootfs.sh`），但**没有任何
    workflow 跑它**（`.github/workflows/ci.yml` 只有编译／单测／两道门禁），签发脚本 `tools/sign-rootfs-index.py`
-   **两仓都查无此件**（两边 `git ls-files` 各 0 命中）。⇒ 主仓 `latest`（= `v2.2.1`，2026-10-23 发布）上的
-   rootfs 与 `rootfs-index.json` 是**存量资产**：新装能装上，但环境包与索引从此不会有更新。
+   **两仓都查无此件**（两边 `git ls-files` 各 0 命中）。⇒ 主仓 `latest`（App 取资产的那条滚动 Release，
+   与固定版本 `v2.2.1` **是两条不同的 Release、资产不是一套**，逐件读数见下面改订二那段）上的 rootfs 与
+   `rootfs-index.json` 是**存量资产**：新装能装上，但环境包与索引从此不会有更新。
    **待补**：要么在本仓落一条 rootfs 发布流水线（构建 → 生成索引 → 签发 → 上传），要么明确决定不再更新环境包 ——
    在两者落地前，别把「App 能装环境」当成「更新链还在」。
+   **裁定（2026-10-28，第二百六十批改订二，蓝总管）**：走**前者** —— 发布链**在本仓重建**，主仓侧**声明不再更新**。
+   README「环境包从哪来」那句按此写（「主仓 Releases 里的 rootfs 资产自 2026-10-28 起冻结，不再更新；新环境包见
+   zhengdao-term Releases」），并且明确**不删主仓旧资产**（老版本 App 装机还要按老 URL 取，删了会把老版本的
+   环境安装一起打断）。搬迁本身是她的在飞动作：把主仓那批 rootfs 资产发进 `zhengdao-term` Releases，再把
+   `RootfsIndex.kt:133` 的索引 URL 改指过来。
+   ⇒ **但这条缺口还没闭合**，本节仍是「断／待补」，实测现状（2026-10-28 取 `api.github.com`）：
+   - 本仓 Releases：`release count: 1`，只有 `v0.1.0` 的 1 件资产（APK 38,897,816 B），**rootfs 资产 0 件**；
+   - 主仓 `latest`（App 真正取资产的那条 URL）：33 件资产里 rootfs **8 件**——`debian-13.7-base-arm64.tar.zst`
+     200,223,802 B 与其 `.sha256`（65 B）、`debian-13.7-copyright.tar.zst` 326,575 B 与其 `.sha256`、
+     `rootfs-index.json` 469 B、`rootfs-index.json.sig` 88 B、`rootfs-manifest.txt` 2,117,771 B 与其 `.sha256`，
+     `updated_at` **全是 2026-10-23T06:42**（此后再没动过）；同日动过的只有 APK
+     （`zhengdao-2.2.1-release.apk` 重传于 2026-10-28T02:59:43Z，7,535,889 B）；
+   - 主仓 `v2.2.1`（固定版本那条）：8 件、`updated_at` 2026-10-23T13:53Z，其中 rootfs 只有 **7 件**——
+     **没有 `rootfs-index.json.sig`**。⇒ 签名资产只在 `latest` 上有，这两条不是同一套文件，登记时别合并成一个数。
+   在流水线真跑通、URL 真改指之前，§8.4 这条不许读成「已解决」；B-T7 的「别真改 URL」红线仍在，本批没动那个字面量。
