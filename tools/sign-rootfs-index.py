@@ -103,6 +103,50 @@ def _encode_point(point):
     return bytes(raw)
 
 
+def _decode_point(raw: bytes):
+    """解 32 字节压缩点（RFC 8032 §5.1.3）；非法点返回 None（验签要拒，不能装死）。"""
+    if len(raw) != 32:
+        return None
+    y = int.from_bytes(raw, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    if y >= P:
+        return None
+    x2 = (y * y - 1) * pow(D * y * y + 1, P - 2, P) % P
+    if x2 == 0:
+        return None if sign else (0, y)
+    x = pow(x2, (P + 3) // 8, P)
+    if (x * x - x2) % P != 0:
+        x = x * pow(2, (P - 1) // 4, P) % P
+    if (x * x - x2) % P != 0:
+        return None
+    if (x & 1) != sign:
+        x = P - x
+    return (x, y)
+
+
+def verify(pub32: bytes, sig64: bytes, message: bytes) -> bool:
+    """RFC 8032 §5.1.7 验签（纯标准库）。
+
+    与 App 侧 `Ed25519.kt` 是**两份独立实现**：命令行这里验过、Kotlin 那边也验过，
+    才算"这条签名链两端都通"（单边实现自说自话是没有说服力的）。
+    """
+    if len(pub32) != 32 or len(sig64) != 64:
+        return False
+    a_point = _decode_point(pub32)
+    r_point = _decode_point(sig64[:32])
+    if a_point is None or r_point is None:
+        return False
+    s = int.from_bytes(sig64[32:], "little")
+    if s >= L:  # 非规范标量 ⇒ RFC 要求拒绝
+        return False
+    k = int.from_bytes(
+        hashlib.sha512(sig64[:32] + pub32 + message).digest(), "little") % L
+    left = _mul(s, (BX, BY))
+    right = _add(r_point, _mul(k, a_point))
+    return left == right
+
+
 def _seed_to_public(seed32: bytes) -> bytes:
     h = hashlib.sha512(seed32).digest()
     a = bytearray(h[:32])
@@ -199,6 +243,11 @@ def main() -> int:
         default=DEFAULT_KEY,
         help="--genkey 的私钥输出路径",
     )
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="只验签不签：用 App 内置公钥校验 <索引>.sig（发布后自查用，不需要私钥）",
+    )
     args = ap.parse_args()
 
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -226,6 +275,26 @@ def main() -> int:
     if not os.path.isfile(index_path):
         print(f"[错误] 找不到索引：{index_path}", file=sys.stderr)
         return 1
+
+    # ── 只验签（--verify）：用 App 内置公钥，不需要私钥 ──────────────────
+    if args.verify:
+        sig_path = index_path + ".sig"
+        if not os.path.isfile(sig_path):
+            print(f"[错误] 找不到签名：{sig_path}（App 会判 Unsigned 并拒绝联网安装）",
+                  file=sys.stderr)
+            return 1
+        const_b64 = _read_pubkey_const(repo)
+        if not const_b64:
+            print("[错误] 读不到 App 内置公钥常量，无法按 App 的口径验签", file=sys.stderr)
+            return 1
+        with open(index_path, "rb") as f:
+            raw = f.read()
+        with open(sig_path, "rb") as f:
+            sig = base64.b64decode(f.read())
+        ok = verify(base64.b64decode(const_b64), sig, raw)
+        print(f"{'[通过]' if ok else '[失败]'} {os.path.basename(index_path)}（{len(raw)} 字节）"
+              f" 的签名与 App 内置公钥 {'匹配' if ok else '不匹配'}")
+        return 0 if ok else 1
 
     if args.key:
         # 读不到就给一句人话，不要把 FileNotFoundError 的堆栈甩给用的人
