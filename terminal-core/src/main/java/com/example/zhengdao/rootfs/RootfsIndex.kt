@@ -111,7 +111,7 @@ object RootfsIndexFetcher {
 
     /** 滚动 Release `latest` 里的固定资产名（协议 §4）。 */
     const val URL =
-        "https://github.com/pisces19860207/zhengdao/releases/download/latest/rootfs-index.json"
+        "https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/rootfs-index.json"
 
     /**
      * 索引签名公钥（32 字节 raw 的 base64），固化在 APK 里。
