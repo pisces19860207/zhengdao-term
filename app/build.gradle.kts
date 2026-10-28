@@ -34,15 +34,31 @@ android {
         }
     }
 
+    signingConfigs {
+        // 正式签名：与主仓同一把 release 钥匙（不同 applicationId 可以共用）。CI 用环境变量；
+        // 本机回退到 ~/.zhengdao-keys/zhengdao-release.jks。密码不写进仓库。
+        create("release") {
+            val home = System.getProperty("user.home")
+            storeFile = file(
+                System.getenv("ZHENGDAO_KEYSTORE_FILE")
+                    ?: "$home/.zhengdao-keys/zhengdao-release.jks",
+            )
+            storePassword = System.getenv("ZHENGDAO_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("ZHENGDAO_KEY_ALIAS") ?: "zhengdao"
+            keyPassword = System.getenv("ZHENGDAO_KEY_PASSWORD") ?: ""
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
-            // release 至今没开混淆（isMinifyEnabled = false 是现状，不是临时值）。终端内核已经
-            // 在本仓，但 R8/keep 规则仍未定：app/proguard-rules.pro 实测 318 B、非注释行 0 条，
-            // 规则文件还是空的 —— 开混淆之前得先把 JNI 与反射点逐条写进去。
-            isMinifyEnabled = false
+            // 正式包：R8 + 资源收缩，release 签名。JNI/反射点由 proguard-rules.pro 兜住；
+            // 本仓终端内核与 JNI 入口都保留，不用「整体不混淆」换平安。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
