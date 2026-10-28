@@ -48,12 +48,15 @@
 
 > **环境包从哪来**（2026-10-28 起，第二百六十批改订二的裁定）：**主仓 Releases 里的 rootfs 资产自 2026-10-28 起
 > 冻结，不再更新；新环境包见 [zhengdao-term Releases](https://github.com/pisces19860207/zhengdao-term/releases)。**
-> 主仓那批旧资产**不删**——老版本 App 装机还要按老 URL 来取。搬迁（把 rootfs 资产发进本仓 Releases、
-> 再把索引 URL 改指过来）由蓝总管在飞；**截至本条提交还没搬完**，实测：本仓 Releases 只有 `v0.1.0` 一个资产
-> （`zhengdao-term-0.1.0-debug.apk` 38,897,816 B，2026-10-27T13:34:40Z）、rootfs 资产 **0 件**，
-> `terminal-core/src/main/java/com/example/zhengdao/rootfs/RootfsIndex.kt:133` 仍指向主仓
-> `releases/download/latest/rootfs-index.json`。⇒ 上面那句「差分更新」要等本仓的 rootfs 发布流水线真正落地
-> 才会发生；缺口登记在 [`PROVENANCE.md`](PROVENANCE.md) §8.4，别读成「已经解决」。
+> 主仓那批旧资产**不删**——老版本 App 装机还要按老 URL 来取；当天 11:41 复取实测：主仓 `latest` 的 rootfs **8 件一件没少**、
+> 时间戳仍是 2026-10-23T06:42，确实没删。
+> **搬迁当天做了一半**（11:41–11:44 复取 `api.github.com`）：本仓已多出一条 Release `rootfs-13.7-2026.10.28`
+> （2026-10-28T03:28:50Z 发布，7 件；`debian-13.7-base-arm64.tar.zst` 200,223,802 B，与主仓**同一个 sha256** `8d2f32e5…3683`，
+> 是同一份字节搬过来的，不是重建的），但还差两步才接得上：
+> ① 本仓这版**没有** `rootfs-index.json.sig`，而代码是「索引没签名就整份拒用」（`RootfsIndex.kt:148` 拼 `.sig`、`:195-197` 缺签即弃）；
+> ② 本仓那份 `rootfs-index.json`（469 B，与主仓逐字节相同）里的 `url` 与 `manifestUrl` **仍指向主仓**，
+> `terminal-core/src/main/java/com/example/zhengdao/rootfs/RootfsIndex.kt:133` 那个代码常量也还没改指（B-T7 红线，本批未动字面量）。
+> ⇒ 所以「差分更新」到今天**仍未发生**；逐条缺口与验签读数在 [`PROVENANCE.md`](PROVENANCE.md) §8.4，别读成「已经解决」。
 
 ## 权限（为什么需要，照实说）
 

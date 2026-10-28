@@ -120,13 +120,18 @@ git 历史留在主仓；`com.termux.**` 是上游）。两边关系：
    zhengdao-term Releases」），并且明确**不删主仓旧资产**（老版本 App 装机还要按老 URL 取，删了会把老版本的
    环境安装一起打断）。搬迁本身是她的在飞动作：把主仓那批 rootfs 资产发进 `zhengdao-term` Releases，再把
    `RootfsIndex.kt:133` 的索引 URL 改指过来。
-   ⇒ **但这条缺口还没闭合**，本节仍是「断／待补」，实测现状（2026-10-28 取 `api.github.com`）：
-   - 本仓 Releases：`release count: 1`，只有 `v0.1.0` 的 1 件资产（APK 38,897,816 B），**rootfs 资产 0 件**；
+   ⇒ **但这条缺口还没闭合**，本节仍是「断／待补」。当天取了两遍，**两遍都在案**（她中午真搬了，不把上午那遍抹掉）：上午那遍 ＋ 11:41–11:44 复取那遍。
+   - 本仓 Releases（上午那遍；**11:41 复取时已被下一条取代**）：`release count: 1`，只有 `v0.1.0` 的 1 件资产（APK 38,897,816 B），**rootfs 资产 0 件**；
+   - 本仓 Releases（**11:41 复取，现在的数**）：`release count: 2` —— `v0.1.0`（1 件 APK）＋ 新增 `rootfs-13.7-2026.10.28`（id `426231473`、`created` 2026-10-27T14:12:39Z、**`published` 2026-10-28T03:28:50Z**、`target_commitish: main`，轻量 tag 指向 `92d690d`）**7 件**：`debian-13.7-base-arm64.tar.zst` 200,223,802 B＋`.sha256` 65 B、`debian-13.7-copyright.tar.zst` 326,575 B＋`.sha256`、`rootfs-index.json` 469 B、`rootfs-manifest.txt` 2,117,771 B＋`.sha256`。**没有 `rootfs-index.json.sig`**。她写在发布正文里的那句与上面的裁定一致：「与主仓不再联动：主仓 Releases 里的 rootfs 资产自 2026-10-28 起冻结」；
+   - 逐件比对用的是 GitHub asset API 返回的 `digest`（**不是我哈希了 200 MB**）：base `8d2f32e5a505ef…73683`、index `2f7755f509871e…68fb`、manifest `eefa3bb3e49417…40c4` 三件**本仓与主仓完全相同** ⇒ 搬的是同一份字节；
+   - **缺 `.sig` 这条我跑命令实测过**（11:43，`python` ＋ `cryptography`）：取主仓 `rootfs-index.json` 469 B 与 `rootfs-index.json.sig` 88 B（base64 解出 64 B），用 APK 内置公钥 `RootfsIndex.kt:145` `INDEX_SIGNING_PUBKEY_B64 = o504TEF3…gxxk=` 做 Ed25519 验签 ⇒ **VERIFY = OK**。⇒ 签这份索引的私钥在蓝总管手里、对应的就是这把在 APK 里的公钥；因为本仓那份 index 与主仓逐字节相同，**把那 88 B 原样传进本仓这条 Release，现有 App 就能验过**，不换钥匙、不发新 APK；
+   - **但别读成「传个 `.sig` 就完事」**：本仓那份 `rootfs-index.json` 里的 `url` 和 `manifestUrl` 仍然写着主仓 `github.com/pisces19860207/zhengdao/releases/download/latest/…`（与主仓逐字节相同，必然如此）。走完上面那步，App 拿到的索引还是把那个 200 MB 的包指回主仓那条**已冻结**的滚动 Release。要真脱离主仓，顺序是三步且缺一不可：① 重写索引里的两个 URL 指向本仓 tag → ② **重新签发**（`.sig` 是对索引字节签的，改一个字就废；而 `tools/sign-rootfs-index.py` 两仓 `git ls-files` 各 0 命中，见上面第 4 条与 §8.3——这一步现在没有现成脚本，得用私钥手工签）→ ③ 把 `RootfsIndex.kt:133` 的字面量改指本仓（**属功能变更，本批按 B-T7 红线未动**）；
    - 主仓 `latest`（App 真正取资产的那条 URL）：33 件资产里 rootfs **8 件**——`debian-13.7-base-arm64.tar.zst`
      200,223,802 B 与其 `.sha256`（65 B）、`debian-13.7-copyright.tar.zst` 326,575 B 与其 `.sha256`、
      `rootfs-index.json` 469 B、`rootfs-index.json.sig` 88 B、`rootfs-manifest.txt` 2,117,771 B 与其 `.sha256`，
      `updated_at` **全是 2026-10-23T06:42**（此后再没动过）；同日动过的只有 APK
      （`zhengdao-2.2.1-release.apk` 重传于 2026-10-28T02:59:43Z，7,535,889 B）；
+   - 主仓 `latest` 11:41 复取：仍 **33 件**、rootfs 那 8 件 `updated_at` 一个没变（⇒「不删旧资产」这条她做到了）；当天变的还是 APK——`zhengdao-2.2.1-release.apk` 又重传了一次，`updated_at` 现为 2026-10-28T03:37:39Z，大小仍 7,535,889 B（上午记的是 02:59:43Z，同一大小）；
    - 主仓 `v2.2.1`（固定版本那条）：8 件、`updated_at` 2026-10-23T13:53Z，其中 rootfs 只有 **7 件**——
      **没有 `rootfs-index.json.sig`**。⇒ 签名资产只在 `latest` 上有，这两条不是同一套文件，登记时别合并成一个数。
-   在流水线真跑通、URL 真改指之前，§8.4 这条不许读成「已解决」；B-T7 的「别真改 URL」红线仍在，本批没动那个字面量。
+   在 ①②③ 走完之前，§8.4 这条不许读成「已解决」；上面 11:41 那遍已经把「本仓一件 rootfs 都没有」这句**作废**了——现在有 7 件，但 App 还取不到（缺 `.sig`、且索引内直链没改），所以结论没变：**能装 ≠ 更新链在**。B-T7 的「别真改 URL」红线仍在，本批没动那个字面量。
