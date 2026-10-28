@@ -6,8 +6,9 @@ README 的「许可与第三方」一节指向这里；正文在 [`licenses/`](l
 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。
 
 > **当前状态（2026-10-27，第四刀交付后）**：终端内核与终端页已整批从证道主仓搬入，
-> 主仓已断链（两边只通过 Maven 构件 `com.example.zhengdao:zhengdao-core` /
-> `zhengdao-native:2.2.1` 相连）。本文件按**实物**登记，不再有「将来会迁入」的条目。
+> 主仓已断链 —— 两边不共享源码，主仓产物以**随仓 AAR** 的形式带在本仓
+> `libs/zhengdao-core-2.2.1.aar` / `libs/zhengdao-native-2.2.1.aar`（见 §2，手动同步）。
+> 本文件按**实物**登记，不再有「将来会迁入」的条目。
 
 ## 1. 第一方代码（本项目原创，保留所有权利）
 
@@ -27,16 +28,19 @@ git 历史在证道主仓，本仓历史从骨架期（第二百四十七批）�
 图标来源：`assets/icon/`（本仓自建，SVG 源 + 512 PNG + 自适应图标）。
 **不是**从证道主仓拷的 —— 主仓是白底「证」+ 绿光标，本仓是暗底 `>_`，刻意不同色系。
 
-## 2. 第一方复用（同一作者的另两个构件，从 `mavenLocal()` 取）
+## 2. 第一方复用（同一作者的另两个构件，随仓 `libs/` 携带）
 
-| 构件 | 版本 | 内容 | 许可 |
-|---|---|---|---|
-| `com.example.zhengdao:zhengdao-core` | 2.2.1 | 证道主仓的 `:core`（`RunLog` / `ZhengdaoDirs` / `AppPrefs` / `TimeFormats` / `kb` / `notify` / `PathGuard`） | 第一方，保留所有权利 |
-| `com.example.zhengdao:zhengdao-native` | 2.2.1 | 主仓的 `:native-core`，AAR 内含 `jniLibs/arm64-v8a/libzhengdao_core.so`（Rust：sha256 / 解压 / 验签，**人工构建入库、CI 不编**） | 第一方，同上 |
+| 随仓文件 | 构件坐标 | 版本 | 内容 | 许可 |
+|---|---|---|---|---|
+| `libs/zhengdao-core-2.2.1.aar` | `com.example.zhengdao:zhengdao-core` | 2.2.1 | 证道主仓的 `:core`（`RunLog` / `ZhengdaoDirs` / `AppPrefs` / `TimeFormats` / `kb` / `notify` / `PathGuard`） | 第一方，保留所有权利 |
+| `libs/zhengdao-native-2.2.1.aar` | `com.example.zhengdao:zhengdao-native` | 2.2.1 | 主仓的 `:native-core`，AAR 内含 `jniLibs/arm64-v8a/libzhengdao_core.so`（Rust：sha256 / 解压 / 验签，**人工构建入库、CI 不编**） | 第一方，同上 |
 
-> 这两个 AAR 由主仓 `maven-publish` 发布（`./gradlew :core:publishReleasePublicationToMavenLocal
-> :native-core:publishReleasePublicationToMavenLocal`）。**源码不进本仓** —— 这是"断链"的定义：
-> 主仓删掉终端代码、本仓不复制主仓源码，两边只剩构件依赖。
+> 这两个 AAR 现在**随仓携带、直接 `files(...)` 引用**（`terminal-core/build.gradle.kts:61,63`），
+> **不再从 `mavenLocal()` 取**：由主仓 248 批以 `maven-publish` 发布后**拷入 `libs/`、手动同步**。
+> ⇒ 克隆本仓就能编，CI 既不需要 `mavenLocal()`，也不要求主仓先发布一次。
+> **源码不进本仓** —— 这是"断链"的定义：主仓删掉终端代码、本仓不复制主仓源码，两边只剩这两份二进制。
+> ⚠️ 手动同步的代价：`libs/` 只是拷贝那一刻的快照，主仓 `:core` / `:native-core` 后续变了**不会自动跟**；
+> 换版本要连着改 `terminal-core/build.gradle.kts` 的文件名与 §4 的 sha256 登记。
 
 ## 3. 第三方源码（在仓，Apache-2.0）
 
@@ -84,13 +88,20 @@ git 历史在证道主仓，本仓历史从骨架期（第二百四十七批）�
 git 历史留在主仓；`com.termux.**` 是上游）。两边关系：
 
 - 同一个作者、同一个品牌、**可并存安装**（`applicationId` 不同：`com.example.zhengdao.term`）；
-- 单向依赖：本仓 → 主仓发布的 AAR；主仓**不**依赖本仓（主仓已删终端代码与模块）；
-- 主仓的 `THIRD-PARTY-LICENSES.md` / `PROVENANCE.md` 只覆盖主仓（抱朴 ＋ 玄览），不覆盖本仓。
+- 单向依赖：本仓 → 主仓发布的 AAR（现以**随仓 `libs/`** 携带，手动同步，见 §2）；
+  主仓**不**依赖本仓（主仓已删终端代码与模块）；
+- **本仓的许可登记以本仓这三件为准**：`LICENSE` / `THIRD-PARTY-LICENSES.md` / `PROVENANCE.md`。
+  主仓的同名文件只覆盖主仓（抱朴 ＋ 玄览），**不覆盖本仓**，别去那边找清单。
 
 ## 8. 已知缺口（如实登记，别当已完成）
 
 1. 许可证正文**已入库** `licenses/`，但**还没装配进 APK**（主仓的 `stageLicenseAssets` 本仓未做）；
    App 内也还没有「开源许可」阅读页。两件事要一起做才算合规闭环。
 2. proot / libtalloc 的**源码获取方式**目前只写在文档里（上游仓库地址），App 的关于页还没有这句话。
-3. `PROOT_PINNED` 式的四件套基线在主仓 `tools/`，本仓尚无对应脚本 —— 上面的 sha256 是**人工登记**，
-   CI 只查存在性。
+3. proot 四件套的 **sha256 基线待补**：主仓那份 `tools/check-native-so.py` 里的 `PROOT_PINNED`
+   已随终端搬离而清空（250 批改成 `{}`），本仓**还没有**对应的基线脚本（仓内没有 `tools/`）
+   —— 所以上面 §4 的 sha256 目前只是**人工登记**，CI 对四件套只查存在性、不比对哈希。
+   **待补**：在本仓落一份等价脚本，把四个 sha256 钉成机检；在它落地之前，别把"有基线"当成事实。
+   已经就位的是 **16KB 页对齐**那一条，但它不是脚本 —— 判据内嵌在
+   `.github/workflows/ci.yml` 的「入库 .so 门禁」步骤里，对会被 `loadLibrary` 的库硬判
+   `PT_LOAD.p_align >= 0x4000`（与主仓脚本的判据 1 同一条，只是各写各的）。

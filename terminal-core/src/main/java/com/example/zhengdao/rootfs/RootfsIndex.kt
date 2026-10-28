@@ -109,7 +109,18 @@ object RootfsIndexParser {
  */
 object RootfsIndexFetcher {
 
-    /** 滚动 Release `latest` 里的固定资产名（协议 §4）。 */
+    /**
+     * 滚动 Release `latest` 里的固定资产名（协议 §4）。
+     *
+     * ⚠️ 地址里的 `zhengdao`（证道主仓）**不是漏改的旧路径**：环境包（Debian rootfs 与
+     * `rootfs-index.json`）**至今仍由主仓的 CI 构建并发布到主仓的 `latest` Release**
+     * （主仓 `.github/workflows/build.yml`：RootFS 重建 → 签名 → `gh release upload latest`）。
+     * 终端搬成本仓（2026-10-27 第四刀）搬的是**消费端代码**，发布端没跟着搬 ⇒ 这条 URL 现状是对的。
+     *
+     * 要把它改指本仓 Releases 属**功能变更**：得连带把 rootfs 的构建、索引生成、Ed25519 签发
+     * 与那条 CI 流水线一起迁过来，否则本仓 `latest` 上根本没有这个文件、App 会立刻装不上环境。
+     * 本批（第二百六十批）按派工单**只登记现状、未动 URL**；要迁另立单评估。
+     */
     const val URL =
         "https://github.com/pisces19860207/zhengdao/releases/download/latest/rootfs-index.json"
 

@@ -1253,7 +1253,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             TerminalLinkPolicy.Verdict.CONFIRM -> {
                 // 第二十一批：真弹二次确认（旧版这里恒 false，"假安全"）。正文给
                 // **完整 URL**（防"显示 A 跳 B"钓鱼——这条判据存在的唯一理由）；
-                // 确认走的打开路径与 OPEN_IN_APP 完全相同（见 openInXuanlan）。
+                // 确认走的打开路径与 OPEN_IN_APP 完全相同（见 openInBrowser）。
                 showLinkConfirmDialog(uri)
                 true
             }
@@ -1277,7 +1277,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /**
      * 链接二次确认卡（第二十一批 A 段）：标题「要打开这个链接吗」＋ **完整 URL**
-     * 正文。「打开」⇒ 走 [openInXuanlan] 并把 host 记进会话信任簿（下次同 host
+     * 正文。「打开」⇒ 走 [openInBrowser] 并把 host 记进会话信任簿（下次同 host
      * 直接开）；「取消」⇒ 什么都不做，只记一条 RunLog。
      */
     private fun showLinkConfirmDialog(uri: String) {

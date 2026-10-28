@@ -2,7 +2,8 @@
 
 从 [证道](https://github.com/pisces19860207/zhengdao) 拆出的**独立终端 App**：真 PTY、Debian 13.7 rootfs、PRoot 免 root。证道本体只保留认知型 harness（抱朴）与浏览器（玄览）；要 shell 的时候，用这个。
 
-> **当前状态**：仓库刚拆出，代码迁移中；首个可安装版本以 [Releases](https://github.com/pisces19860207/zhengdao-term/releases) 为准（还没发就是还没有）。
+> **当前状态**：迁移已完成（2026-10-27 第四刀）——终端内核（PTY / rootfs / proot）与终端页都在本仓，
+> 主仓那边已删。首个可安装版本以 [Releases](https://github.com/pisces19860207/zhengdao-term/releases) 为准（还没发就是还没有）。
 
 ## 它是什么
 
@@ -73,8 +74,12 @@
   - PRoot（GPL-2.0，聚合分发）
   - Debian rootfs 及其中的软件包（各自许可证）
   - JetBrains Maple Mono 字体（OFL-1.1）
-- 许可证正文随安装包内置；完整清单见主仓 `THIRD-PARTY-LICENSES.md` 与 `PROVENANCE.md`。
-- 本仓自己的同名文件：`LICENSE`（第一方条款）、`PROVENANCE.md`（来源与出处）、`THIRD-PARTY-LICENSES.md`（第三方清单与义务）。
+- 许可证正文在仓内 `licenses/`（Apache-2.0 / GPL-2.0 / GPL-3.0 / LGPL-3.0 / BSD 系 ＋ `NOTICES.txt`）；
+  **完整清单看本仓**的 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) 与 [`PROVENANCE.md`](PROVENANCE.md)。
+  ⚠️ 正文目前**只入库、还没装配进 APK**，App 内也还没有「开源许可」阅读页 —— 这一条以
+  `PROVENANCE.md` §8「已知缺口」为准，别把上面的清单当成合规闭环已完成。
+- 本仓自己的同名文件：`LICENSE`（第一方条款）、`PROVENANCE.md`（来源与出处）、`THIRD-PARTY-LICENSES.md`（第三方清单与义务）；
+  主仓（证道）的那三份**只覆盖主仓**（抱朴 ＋ 玄览），不覆盖本仓。
 
 ## 构建
 
@@ -88,7 +93,9 @@
 ./gradlew :app:assembleDebug      # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-本仓只有 `:app` 一个模块；终端内核（PTY / rootfs / proot）与共享层会在后续批次整模块迁入，届时构建脚本再动。
+本仓是**两个模块**：`:app`（壳与终端页）＋ `:terminal-core`（PTY / rootfs / proot，2026-10-27 第四刀整模块迁入）。
+共享层（主仓的 `:core` / `:native-core`）**不建成本仓模块**，以随仓 `libs/*.aar` 复用，
+所以克隆本仓直接能编 —— 不需要 `mavenLocal()`，也不要求主仓先发布一次。
 
 ## 致谢
 
@@ -96,4 +103,4 @@
 
 ---
 
-**English (short)**: Zhengdao Terminal is a standalone Android terminal app split out of [Zhengdao](https://github.com/pisces19860207/zhengdao): a real PTY, a Debian 13.7 rootfs and PRoot, no root, no Termux, no Shizuku. Zhengdao itself keeps only the agent harness (Baopu) and the browser (Xuanlan). Requires Android 16+ on arm64. The terminal is **not a security sandbox** — run only commands you trust. Code migration is in progress; installable builds will appear under Releases.
+**English (short)**: Zhengdao Terminal is a standalone Android terminal app split out of [Zhengdao](https://github.com/pisces19860207/zhengdao): a real PTY, a Debian 13.7 rootfs and PRoot, no root, no Termux, no Shizuku. Zhengdao itself keeps only the agent harness (Baopu) and the browser (Xuanlan). Requires Android 16+ on arm64. The terminal is **not a security sandbox** — run only commands you trust. Migration is complete (fourth cut, 2026-10-27): the terminal core and the terminal screen both live in this repo, as two modules (`:app` + `:terminal-core`). Installable builds will appear under Releases.
