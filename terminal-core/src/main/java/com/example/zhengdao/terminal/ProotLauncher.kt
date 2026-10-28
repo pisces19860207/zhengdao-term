@@ -22,6 +22,11 @@ object ProotLauncher {
     /**
      * 默认 RootFS 下载地址：latest 发布永远指向最新一次构建的产物，
      * 因此这条地址长期有效。M3 起改为由 ed25519 验签的 manifest 动态下发。
+     *
+     * 地址里的 `zhengdao`（证道主仓）与 [com.example.zhengdao.rootfs.RootfsIndexFetcher.URL] 是同一口径：
+     * rootfs 的**发布端仍在主仓 CI**（重建 → 签名 → `gh release upload latest`），第四刀搬过来的是
+     * 消费端代码 ⇒ 这条**不是漏改的旧路径**。要改指本仓 Releases 属功能变更（发布链得一起搬），
+     * 第二百六十批只登记现状、未动 URL。
      */
     const val DEFAULT_ROOTFS_URL =
         "https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst"

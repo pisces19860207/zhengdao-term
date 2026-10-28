@@ -48,7 +48,11 @@
 
 ## 权限（为什么需要，照实说）
 
-安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限；运行时申请与授权流程随终端内核一起进来（当前骨架期不会弹任何权限框）。
+安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限。本仓**没有应用内的权限对话框**：全仓唯一的授权动作是
+入口页那个「授权」按钮，它跳的是**系统设置**页（`app/src/main/java/com/example/zhengdao/term/MainActivity.kt:75-83`），
+代码里没有 `requestPermissions(...)` / `registerForActivityResult` 申请点（第二百六十批实测 grep，命中 0）。
+所以下表里属于运行时权限的那几条（如 `POST_NOTIFICATIONS`）只能你在系统设置里给；不给就少一块功能（发不出保活通知），
+但 App 不会自己弹窗要你给。
 
 | 权限 | 为什么需要 |
 |---|---|

@@ -1261,14 +1261,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * App 内玄览打开的**唯一路径**（B 路径：不新开 Activity——写 BrowserHolder
-     * .pendingUrl ＋ 请求主页切 Tab ＋ finish() 回主页，由 MainActivity ON_RESUME
-     * 消费）。OPEN_IN_APP 与确认后打开都走它 ⇒ 没有第二条打开路径（J4）。
+     * 「打开链接」的**唯一路径**（J4：OPEN_IN_APP 与确认后打开都走它 ⇒ 没有第二条打开路径）。
+     *
+     * 现在只做一件事：`ACTION_VIEW` 把 URL 交给**系统浏览器**。证道终端是独立 App，仓里没有浏览器页，
+     * 原形态那套依赖主仓 `BrowserHolder` 单例，搬过来带不动 ⇒ 这是第四刀（2026-10-27）搬家时
+     * **唯一的行为差异**，已在第四刀交付报告「偏差」一节逐条登记。
      */
     private fun openInBrowser(uri: String) {
-        // 第四刀（2026-10-27）：证道终端是**独立 APP**，没有内置浏览器（玄览在主仓），
-        // 所以「App 内打开」这条路径改成交给系统浏览器。这是搬家时唯一的行为差异，
-        // 已在交付报告「偏差」一节逐条登记（原路径依赖主仓的 BrowserHolder 单例）。
         val ok = runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri.toUri())) }.isSuccess
         if (!ok) {
             Toast.makeText(this, getString(R.string.term_browser_failed, ""), Toast.LENGTH_SHORT).show()
