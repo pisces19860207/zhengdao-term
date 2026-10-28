@@ -35,10 +35,10 @@ class RootfsIndexSignatureTest {
             "  \"version\": \"13.7\",",
             "  \"env\": \"f29b58512d083c96\",",
             "  \"builtAt\": \"2026-10-23T06:42:08Z\",",
-            "  \"url\": \"https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst\",",
+            "  \"url\": \"https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/debian-13.7-base-arm64.tar.zst\",",
             "  \"sha256\": \"8d2f32e5a505ef0680b29e93d8b7422e0c0ea7b4212cd0df09c1adebdd473683\",",
             "  \"size\": 200223802,",
-            "  \"manifestUrl\": \"https://github.com/pisces19860207/zhengdao/releases/download/latest/rootfs-manifest.txt\",",
+            "  \"manifestUrl\": \"https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/rootfs-manifest.txt\",",
             "  \"patch\": null",
             "}",
         ).joinToString("\n") + "\n"

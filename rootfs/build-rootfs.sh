@@ -551,7 +551,7 @@ if command -v python3 >/dev/null 2>&1 && [ -f "$MANIFEST_TOOL" ]; then
     echo "[5/5] 没有上一版清单（BASE_MANIFEST='${BASE_MANIFEST}'），本次不产补丁"
   fi
   INDEX_ARGS=(index --new-manifest "$NEW_MANIFEST" --pkg "$OUT_DIR/$ASSET"
-    --repo "${GITHUB_REPOSITORY:-pisces19860207/zhengdao}"
+    --repo "${GITHUB_REPOSITORY:-pisces19860207/zhengdao-term}"
     --distro "debian-$DEBIAN_VERSION" --version "$DEBIAN_VERSION" --asset "$ASSET"
     --out "$OUT_DIR/rootfs-index.json")
   if [ -n "$PATCH_ASSET" ]; then INDEX_ARGS+=(--patch "$OUT_DIR/$PATCH_ASSET"); fi

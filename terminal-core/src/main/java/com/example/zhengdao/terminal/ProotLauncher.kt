@@ -31,7 +31,7 @@ object ProotLauncher {
      * （发布链得先重建），第二百六十批只登记现状、未动 URL。
      */
     const val DEFAULT_ROOTFS_URL =
-        "https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst"
+        "https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/debian-13.7-base-arm64.tar.zst"
 
     /**
      * 一次启动的完整计划。

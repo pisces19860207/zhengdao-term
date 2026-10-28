@@ -175,7 +175,7 @@ object AgentManifest {
      * 不稳定，而 api.github.com 稳定可达（环境更新按钮同域验证）——Contents API 排第一。
      */
     private fun channels(ctx: Context): List<() -> Pair<String, String>> {
-        val repoPath = "pisces19860207/zhengdao/main"
+        val repoPath = "pisces19860207/zhengdao-term/main"
         return listOf(
             // ① GitHub Contents API（base64 包裹，走 api.github.com）
             {
@@ -194,7 +194,7 @@ object AgentManifest {
             },
             // ③ jsDelivr CDN（同上）
             {
-                val u = "https://cdn.jsdelivr.net/gh/pisces19860207/zhengdao@main/rootfs/agents.json"
+                val u = "https://cdn.jsdelivr.net/gh/pisces19860207/zhengdao-term@main/rootfs/agents.json"
                 val body = RootfsDownloader.fetchText(u, trimEnds = false)
                 val sig = RootfsDownloader.fetchText("$u.sig")
                 require(body != null && sig != null) { "jsDelivr 不可达" }
