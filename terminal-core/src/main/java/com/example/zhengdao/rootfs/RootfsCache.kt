@@ -36,7 +36,7 @@ object RootfsCache {
      *  新逻辑一律先走 [INDEX_URL]；只有索引取不到时才回退到这里，拿完版本号也只做"提示"，
      *  不据此下载（老文件里的 url/sha256 可能早已失效）。 */
     const val MANIFEST_URL =
-        "https://raw.githubusercontent.com/pisces19860207/zhengdao/main/rootfs/manifest.json"
+        "https://raw.githubusercontent.com/pisces19860207/zhengdao-term/main/rootfs/manifest.json"
 
     /** 环境索引（增量下发协议 §4）：版本/内容指纹/全量包/增量补丁的唯一事实来源。
      *  字符串只有一份——抓取逻辑在 [RootfsIndexFetcher]，这里复用同一个常量。 */
