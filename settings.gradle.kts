@@ -1,8 +1,8 @@
 // 证道终端（zhengdao-term）· Gradle 设置
 //
-// 本仓是**独立 APP 仓**：只有 :app 一个模块。
-// 刻意**不预建** :core / :terminal-core —— 终端内核在第四刀整模块搬入，
-// 共享层（证道的 :core）第五刀再接；现在建空壳只会让人以为"已经分好层了"。
+// 本仓是**独立 APP 仓**：两个模块 —— :app（壳与终端页）＋ :terminal-core（PTY / rootfs / proot）。
+// 终端内核已于第四刀（2026-10-27）整模块从主仓搬入，不再是"空壳待迁"。
+// 共享层（证道的 :core / :native-core）**不建成本仓模块**：只以随仓 AAR 复用（见下方 repositories 注释）。
 pluginManagement {
     repositories {
         google {
@@ -22,9 +22,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // 主仓把 :core / :native-core 发布到 mavenLocal（com.example.zhengdao:zhengdao-core:2.2.1）。
-        // 两仓**不共享源码**，只共享这个产物（设计稿 §1 选型①）。
-        mavenLocal()
+        // 依赖随仓 `libs/` 携带：terminal-core/build.gradle.kts 以 files("../libs/*.aar") 引用
+        // zhengdao-core-2.2.1.aar 与 zhengdao-native-2.2.1.aar（由主仓 248 批发布后拷入、手动同步）。
+        // 因此**不依赖 mavenLocal**，也不要求主仓先发布 —— 克隆本仓直接能编，CI 同理。
+        // 两仓仍**不共享源码**：AAR 的源码留在主仓，这是"断链"的定义。
     }
 }
 

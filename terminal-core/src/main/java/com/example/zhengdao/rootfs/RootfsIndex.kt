@@ -109,7 +109,26 @@ object RootfsIndexParser {
  */
 object RootfsIndexFetcher {
 
-    /** 滚动 Release `latest` 里的固定资产名（协议 §4）。 */
+    /**
+     * 滚动 Release `latest` 里的固定资产名（协议 §4）。
+     *
+     * ⚠️ 地址里的 `zhengdao`（证道主仓）**不是漏改的旧路径**：索引与 Debian 环境包是主仓
+     * 2026-10-23 那次发布挂到 `latest` 上的，**至今仍在**（本批 2026-10-28 实测：`latest` = `v2.2.1`，
+     * 资产 8 件，含 `rootfs-index.json` 469 B 与 `debian-13.7-base-arm64.tar.zst` 200 MB）
+     * ⇒ 这条 URL 现在**确实取得到文件**，不是死链。
+     *
+     * 但**发布端已断**，断在本批当天：主仓 `d698ea03`（10-28 08:31）把「本次要不要重建 RootFS」
+     * 改成恒 `false`；`c331db18`（10-28 09:34）删掉 `build.yml` 里 8 个 RootFS 步骤（qemu 构建 →
+     * Ed25519 签名 → `gh release upload latest`）。构建脚本 `rootfs/build-rootfs.sh` 现在**只在本仓**，
+     * 而本仓唯一的 `.github/workflows/ci.yml` 没有一步跑它 ⇒ 两仓的 CI 都不会再产出、也不会再发布索引。
+     * 说人话：`latest` 上是**存量资产**——新装能装上，但环境包与索引从此不会有更新，
+     * 直到有人把发布链重建起来。
+     *
+     * 要改指本仓 Releases 属**功能变更**：得先在本仓把 rootfs 构建、索引生成与 Ed25519 签发跑通
+     * （签发脚本 `tools/sign-rootfs-index.py` 两仓 `git ls-files` 都查无此件——见 `PROVENANCE.md` §8.3）；
+     * 直接改地址的话本仓 `latest` 上根本没有这个文件，App 会立刻装不上环境。
+     * 本批（第二百六十批）按派工单**只登记现状、未动 URL**；恢复发布链另立单。
+     */
     const val URL =
         "https://github.com/pisces19860207/zhengdao-term/releases/download/rootfs-13.7-2026.10.28/rootfs-index.json"
 

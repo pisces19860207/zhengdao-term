@@ -26,8 +26,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // README 写的是「只提供 arm64 单架构包」。骨架期还没有 .so，
-        // 但先把 ABI 口径钉住，第四刀搬入 proot 四件套时不用再改构建脚本。
+        // README 写的是「只提供 arm64 单架构包」，这条与实物一致：交付 APK 里 8 个 .so
+        // 全在 lib/arm64-v8a/ 一个目录下（2026-10-28 把 zip 逐项读出来的）。第四刀搬进来的
+        // proot 四件套没要求再动构建脚本 —— ABI 口径当初钉住之后一直是钉住的状态。
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -38,8 +39,9 @@ android {
             isMinifyEnabled = false
         }
         release {
-            // 骨架期不做混淆：没有需要保护的代码，先把包做出来。
-            // 真正的 R8/keep 规则随终端内核一起定（第四刀）。
+            // release 至今没开混淆（isMinifyEnabled = false 是现状，不是临时值）。终端内核已经
+            // 在本仓，但 R8/keep 规则仍未定：app/proguard-rules.pro 实测 318 B、非注释行 0 条，
+            // 规则文件还是空的 —— 开混淆之前得先把 JNI 与反射点逐条写进去。
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -63,7 +65,8 @@ android {
     }
 
     lint {
-        // 骨架期只有壳页；targetSdk 已是当前最新，关掉"该升 targetSdk"的噪声。
+        // targetSdk 已是当前最新（36）⇒ 关掉"该升 targetSdk"的噪声。页面则早就不止壳页：
+        // app/src/main 实测 12 个 .kt（壳页＋终端页），终端内核在 :terminal-core。
         disable += "ExpiredTargetSdkVersion"
     }
 }

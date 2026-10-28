@@ -1227,9 +1227,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     /**
      * OSC 8 链接 / B 路径 URL 的统一打开策略（证道 2026-10-14，§B-12）。
      *
-     * 落点（派工单）：解析结果走 TerminalLinkPolicy，**打开交玄览的 B 路径**——
-     * App 内打开不新开 Activity：写 BrowserHolder.pendingUrl + 请求主页切 Tab + finish()
-     * 回主页，由 MainActivity ON_RESUME 消费切 Tab 请求落到玄览。
+     * 落点：解析结果走 [TerminalLinkPolicy]，`OPEN_IN_APP` ⇒ [openInBrowser]、`OPEN_SYSTEM` ⇒ `ACTION_VIEW`。
+     * 原形态（证道 2026-10-14，§B-12）是「打开交玄览的 B 路径」——写 `BrowserHolder.pendingUrl` ＋ 请求主页
+     * 切 Tab ＋ `finish()` 回主页；第四刀（2026-10-27）后本仓没有内置浏览器，这条路径落到**系统浏览器**。
      */
     override fun onLinkOpen(uri: String): Boolean {
         return when (TerminalLinkPolicy.classify(uri, trustedLinkHosts)) {
@@ -1253,7 +1253,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             TerminalLinkPolicy.Verdict.CONFIRM -> {
                 // 第二十一批：真弹二次确认（旧版这里恒 false，"假安全"）。正文给
                 // **完整 URL**（防"显示 A 跳 B"钓鱼——这条判据存在的唯一理由）；
-                // 确认走的打开路径与 OPEN_IN_APP 完全相同（见 openInXuanlan）。
+                // 确认走的打开路径与 OPEN_IN_APP 完全相同（见 openInBrowser）。
                 showLinkConfirmDialog(uri)
                 true
             }
@@ -1261,14 +1261,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * App 内玄览打开的**唯一路径**（B 路径：不新开 Activity——写 BrowserHolder
-     * .pendingUrl ＋ 请求主页切 Tab ＋ finish() 回主页，由 MainActivity ON_RESUME
-     * 消费）。OPEN_IN_APP 与确认后打开都走它 ⇒ 没有第二条打开路径（J4）。
+     * 「打开链接」的**唯一路径**（J4：OPEN_IN_APP 与确认后打开都走它 ⇒ 没有第二条打开路径）。
+     *
+     * 现在只做一件事：`ACTION_VIEW` 把 URL 交给**系统浏览器**。证道终端是独立 App，仓里没有浏览器页，
+     * 原形态那套依赖主仓 `BrowserHolder` 单例，搬过来带不动 ⇒ 这是第四刀（2026-10-27）搬家时
+     * **唯一的行为差异**，已在第四刀交付报告「偏差」一节逐条登记。
      */
     private fun openInBrowser(uri: String) {
-        // 第四刀（2026-10-27）：证道终端是**独立 APP**，没有内置浏览器（玄览在主仓），
-        // 所以「App 内打开」这条路径改成交给系统浏览器。这是搬家时唯一的行为差异，
-        // 已在交付报告「偏差」一节逐条登记（原路径依赖主仓的 BrowserHolder 单例）。
         val ok = runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri.toUri())) }.isSuccess
         if (!ok) {
             Toast.makeText(this, getString(R.string.term_browser_failed, ""), Toast.LENGTH_SHORT).show()
@@ -1277,7 +1276,7 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
 
     /**
      * 链接二次确认卡（第二十一批 A 段）：标题「要打开这个链接吗」＋ **完整 URL**
-     * 正文。「打开」⇒ 走 [openInXuanlan] 并把 host 记进会话信任簿（下次同 host
+     * 正文。「打开」⇒ 走 [openInBrowser] 并把 host 记进会话信任簿（下次同 host
      * 直接开）；「取消」⇒ 什么都不做，只记一条 RunLog。
      */
     private fun showLinkConfirmDialog(uri: String) {
@@ -1555,13 +1554,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * 选中文字 → **直接落玄览**（用户 2026-10-18：「长按更多里面的搜索是不是可以直接跳转到
-     * 玄览了啊？不用外部浏览器了」）。
+     * 选中文字 → 直接落搜索（用户 2026-10-18 的原话是「长按更多里面的搜索是不是可以直接跳转到
+     * 玄览了啊？不用外部浏览器了」——那是主仓时期的落点，本仓没有内置浏览器，见下）。
      *
      * 历史：2026-10-11 曾改为交给系统默认搜索（ACTION_WEB_SEARCH）—— 那是当时的口径，已被本次覆盖。
-     * 现在与 OSC 8 链接走**同一条 B 路径**：写 BrowserHolder.pendingUrl ＋ 请求切 Tab ＋ finish() 回主页，
-     * 由 MainActivity ON_RESUME 消费请求落到玄览，全程不离开 App。
-     * 引擎仍用 bing（与玄览主页一致），查询串做 URL 编码。
+     * 现在与 OSC 8 链接走同一条路：`ACTION_VIEW` 把搜索 URL 交给**系统浏览器**（本仓无内置浏览器，
+     * 「全程不离开 App」那句是搬仓前的形态，第四刀起不再成立）。
+     * 引擎仍用 bing，查询串做 URL 编码。
      */
     private fun openWebSearch(query: String) {
         val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")

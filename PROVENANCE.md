@@ -6,8 +6,9 @@ README 的「许可与第三方」一节指向这里；正文在 [`licenses/`](l
 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。
 
 > **当前状态（2026-10-27，第四刀交付后）**：终端内核与终端页已整批从证道主仓搬入，
-> 主仓已断链（两边只通过 Maven 构件 `com.example.zhengdao:zhengdao-core` /
-> `zhengdao-native:2.2.1` 相连）。本文件按**实物**登记，不再有「将来会迁入」的条目。
+> 主仓已断链 —— 两边不共享源码，主仓产物以**随仓 AAR** 的形式带在本仓
+> `libs/zhengdao-core-2.2.1.aar` / `libs/zhengdao-native-2.2.1.aar`（见 §2，手动同步）。
+> 本文件按**实物**登记，不再有「将来会迁入」的条目。
 
 ## 1. 第一方代码（本项目原创，保留所有权利）
 
@@ -27,16 +28,19 @@ git 历史在证道主仓，本仓历史从骨架期（第二百四十七批）�
 图标来源：`assets/icon/`（本仓自建，SVG 源 + 512 PNG + 自适应图标）。
 **不是**从证道主仓拷的 —— 主仓是白底「证」+ 绿光标，本仓是暗底 `>_`，刻意不同色系。
 
-## 2. 第一方复用（同一作者的另两个构件，从 `mavenLocal()` 取）
+## 2. 第一方复用（同一作者的另两个构件，随仓 `libs/` 携带）
 
-| 构件 | 版本 | 内容 | 许可 |
-|---|---|---|---|
-| `com.example.zhengdao:zhengdao-core` | 2.2.1 | 证道主仓的 `:core`（`RunLog` / `ZhengdaoDirs` / `AppPrefs` / `TimeFormats` / `kb` / `notify` / `PathGuard`） | 第一方，保留所有权利 |
-| `com.example.zhengdao:zhengdao-native` | 2.2.1 | 主仓的 `:native-core`，AAR 内含 `jniLibs/arm64-v8a/libzhengdao_core.so`（Rust：sha256 / 解压 / 验签，**人工构建入库、CI 不编**） | 第一方，同上 |
+| 随仓文件 | 构件坐标 | 版本 | 内容 | 许可 |
+|---|---|---|---|---|
+| `libs/zhengdao-core-2.2.1.aar` | `com.example.zhengdao:zhengdao-core` | 2.2.1 | 证道主仓的 `:core`（`RunLog` / `ZhengdaoDirs` / `AppPrefs` / `TimeFormats` / `kb` / `notify` / `PathGuard`） | 第一方，保留所有权利 |
+| `libs/zhengdao-native-2.2.1.aar` | `com.example.zhengdao:zhengdao-native` | 2.2.1 | 主仓的 `:native-core`，AAR 内含 `jniLibs/arm64-v8a/libzhengdao_core.so`（Rust：sha256 / 解压 / 验签，**人工构建入库、CI 不编**） | 第一方，同上 |
 
-> 这两个 AAR 由主仓 `maven-publish` 发布（`./gradlew :core:publishReleasePublicationToMavenLocal
-> :native-core:publishReleasePublicationToMavenLocal`）。**源码不进本仓** —— 这是"断链"的定义：
-> 主仓删掉终端代码、本仓不复制主仓源码，两边只剩构件依赖。
+> 这两个 AAR 现在**随仓携带、直接 `files(...)` 引用**（`terminal-core/build.gradle.kts:61,63`），
+> **不再从 `mavenLocal()` 取**：由主仓 248 批以 `maven-publish` 发布后**拷入 `libs/`、手动同步**。
+> ⇒ 克隆本仓就能编，CI 既不需要 `mavenLocal()`，也不要求主仓先发布一次。
+> **源码不进本仓** —— 这是"断链"的定义：主仓删掉终端代码、本仓不复制主仓源码，两边只剩这两份二进制。
+> ⚠️ 手动同步的代价：`libs/` 只是拷贝那一刻的快照，主仓 `:core` / `:native-core` 后续变了**不会自动跟**；
+> 换版本要连着改 `terminal-core/build.gradle.kts` 的文件名与 §4 的 sha256 登记。
 
 ## 3. 第三方源码（在仓，Apache-2.0）
 
@@ -84,13 +88,50 @@ git 历史在证道主仓，本仓历史从骨架期（第二百四十七批）�
 git 历史留在主仓；`com.termux.**` 是上游）。两边关系：
 
 - 同一个作者、同一个品牌、**可并存安装**（`applicationId` 不同：`com.example.zhengdao.term`）；
-- 单向依赖：本仓 → 主仓发布的 AAR；主仓**不**依赖本仓（主仓已删终端代码与模块）；
-- 主仓的 `THIRD-PARTY-LICENSES.md` / `PROVENANCE.md` 只覆盖主仓（抱朴 ＋ 玄览），不覆盖本仓。
+- 单向依赖：本仓 → 主仓发布的 AAR（现以**随仓 `libs/`** 携带，手动同步，见 §2）；
+  主仓**不**依赖本仓（主仓已删终端代码与模块）；
+- **本仓的许可登记以本仓这三件为准**：`LICENSE` / `THIRD-PARTY-LICENSES.md` / `PROVENANCE.md`。
+  主仓的同名文件只覆盖主仓（抱朴 ＋ 玄览），**不覆盖本仓**，别去那边找清单。
 
 ## 8. 已知缺口（如实登记，别当已完成）
 
 1. 许可证正文**已入库** `licenses/`，但**还没装配进 APK**（主仓的 `stageLicenseAssets` 本仓未做）；
    App 内也还没有「开源许可」阅读页。两件事要一起做才算合规闭环。
 2. proot / libtalloc 的**源码获取方式**目前只写在文档里（上游仓库地址），App 的关于页还没有这句话。
-3. `PROOT_PINNED` 式的四件套基线在主仓 `tools/`，本仓尚无对应脚本 —— 上面的 sha256 是**人工登记**，
-   CI 只查存在性。
+3. proot 四件套的 **sha256 基线待补**：主仓那份 `tools/check-native-so.py` 里的 `PROOT_PINNED`
+   已随终端搬离而清空（250 批改成 `{}`），本仓**还没有**对应的基线脚本（仓内没有 `tools/`）
+   —— 所以上面 §4 的 sha256 目前只是**人工登记**，CI 对四件套只查存在性、不比对哈希。
+   **待补**：在本仓落一份等价脚本，把四个 sha256 钉成机检；在它落地之前，别把"有基线"当成事实。
+   已经就位的是 **16KB 页对齐**那一条，但它不是脚本 —— 判据内嵌在
+   `.github/workflows/ci.yml` 的「入库 .so 门禁」步骤里，对会被 `loadLibrary` 的库硬判
+   `PT_LOAD.p_align >= 0x4000`（与主仓脚本的判据 1 同一条，只是各写各的）。
+
+4. **环境包的发布链现在是断的**（2026-10-28 实测，第二百六十批登记）：主仓 `d698ea03`（08:31）把「本次要不要
+   重建 RootFS」改成恒 `false`，`c331db18`（09:34）又删掉主仓 `build.yml` 里构建 → Ed25519 签名 →
+   `gh release upload latest` 那 8 个步骤；构建脚本本仓接手了（`rootfs/build-rootfs.sh`），但**没有任何
+   workflow 跑它**（`.github/workflows/ci.yml` 只有编译／单测／两道门禁），签发脚本 `tools/sign-rootfs-index.py`
+   **两仓都查无此件**（两边 `git ls-files` 各 0 命中）。⇒ 主仓 `latest`（App 取资产的那条滚动 Release，
+   与固定版本 `v2.2.1` **是两条不同的 Release、资产不是一套**，逐件读数见下面改订二那段）上的 rootfs 与
+   `rootfs-index.json` 是**存量资产**：新装能装上，但环境包与索引从此不会有更新。
+   **待补**：要么在本仓落一条 rootfs 发布流水线（构建 → 生成索引 → 签发 → 上传），要么明确决定不再更新环境包 ——
+   在两者落地前，别把「App 能装环境」当成「更新链还在」。
+   **裁定（2026-10-28，第二百六十批改订二，蓝总管）**：走**前者** —— 发布链**在本仓重建**，主仓侧**声明不再更新**。
+   README「环境包从哪来」那句按此写（「主仓 Releases 里的 rootfs 资产自 2026-10-28 起冻结，不再更新；新环境包见
+   zhengdao-term Releases」），并且明确**不删主仓旧资产**（老版本 App 装机还要按老 URL 取，删了会把老版本的
+   环境安装一起打断）。搬迁本身是她的在飞动作：把主仓那批 rootfs 资产发进 `zhengdao-term` Releases，再把
+   `RootfsIndex.kt:133` 的索引 URL 改指过来。
+   ⇒ **但这条缺口还没闭合**，本节仍是「断／待补」。当天取了两遍，**两遍都在案**（她中午真搬了，不把上午那遍抹掉）：上午那遍 ＋ 11:41–11:44 复取那遍。
+   - 本仓 Releases（上午那遍；**11:41 复取时已被下一条取代**）：`release count: 1`，只有 `v0.1.0` 的 1 件资产（APK 38,897,816 B），**rootfs 资产 0 件**；
+   - 本仓 Releases（**11:41 复取，现在的数**）：`release count: 2` —— `v0.1.0`（1 件 APK）＋ 新增 `rootfs-13.7-2026.10.28`（id `426231473`、`created` 2026-10-27T14:12:39Z、**`published` 2026-10-28T03:28:50Z**、`target_commitish: main`，轻量 tag 指向 `92d690d`）**7 件**：`debian-13.7-base-arm64.tar.zst` 200,223,802 B＋`.sha256` 65 B、`debian-13.7-copyright.tar.zst` 326,575 B＋`.sha256`、`rootfs-index.json` 469 B、`rootfs-manifest.txt` 2,117,771 B＋`.sha256`。**没有 `rootfs-index.json.sig`**。她写在发布正文里的那句与上面的裁定一致：「与主仓不再联动：主仓 Releases 里的 rootfs 资产自 2026-10-28 起冻结」；
+   - 逐件比对用的是 GitHub asset API 返回的 `digest`（**不是我哈希了 200 MB**）：base `8d2f32e5a505ef…73683`、index `2f7755f509871e…68fb`、manifest `eefa3bb3e49417…40c4` 三件**本仓与主仓完全相同** ⇒ 搬的是同一份字节；
+   - **缺 `.sig` 这条我跑命令实测过**（11:43，`python` ＋ `cryptography`）：取主仓 `rootfs-index.json` 469 B 与 `rootfs-index.json.sig` 88 B（base64 解出 64 B），用 APK 内置公钥 `RootfsIndex.kt:145` `INDEX_SIGNING_PUBKEY_B64 = o504TEF3…gxxk=` 做 Ed25519 验签 ⇒ **VERIFY = OK**。⇒ 签这份索引的私钥在蓝总管手里、对应的就是这把在 APK 里的公钥；因为本仓那份 index 与主仓逐字节相同，**把那 88 B 原样传进本仓这条 Release，现有 App 就能验过**，不换钥匙、不发新 APK；
+   - **但别读成「传个 `.sig` 就完事」**：本仓那份 `rootfs-index.json` 里的 `url` 和 `manifestUrl` 仍然写着主仓 `github.com/pisces19860207/zhengdao/releases/download/latest/…`（与主仓逐字节相同，必然如此）。走完上面那步，App 拿到的索引还是把那个 200 MB 的包指回主仓那条**已冻结**的滚动 Release。要真脱离主仓，顺序是三步且缺一不可：① 重写索引里的两个 URL 指向本仓 tag → ② **重新签发**（`.sig` 是对索引字节签的，改一个字就废；而 `tools/sign-rootfs-index.py` 两仓 `git ls-files` 各 0 命中，见上面第 4 条与 §8.3——这一步现在没有现成脚本，得用私钥手工签）→ ③ 把 `RootfsIndex.kt:133` 的字面量改指本仓（**属功能变更，本批按 B-T7 红线未动**）；
+   - 主仓 `latest`（App 真正取资产的那条 URL）：33 件资产里 rootfs **8 件**——`debian-13.7-base-arm64.tar.zst`
+     200,223,802 B 与其 `.sha256`（65 B）、`debian-13.7-copyright.tar.zst` 326,575 B 与其 `.sha256`、
+     `rootfs-index.json` 469 B、`rootfs-index.json.sig` 88 B、`rootfs-manifest.txt` 2,117,771 B 与其 `.sha256`，
+     `updated_at` **全是 2026-10-23T06:42**（此后再没动过）；同日动过的只有 APK
+     （`zhengdao-2.2.1-release.apk` 重传于 2026-10-28T02:59:43Z，7,535,889 B）；
+   - 主仓 `latest` 11:41 复取：仍 **33 件**、rootfs 那 8 件 `updated_at` 一个没变（⇒「不删旧资产」这条她做到了）；当天变的还是 APK——`zhengdao-2.2.1-release.apk` 又重传了一次，`updated_at` 现为 2026-10-28T03:37:39Z，大小仍 7,535,889 B（上午记的是 02:59:43Z，同一大小）；
+   - 主仓 `v2.2.1`（固定版本那条）：8 件、`updated_at` 2026-10-23T13:53Z，其中 rootfs 只有 **7 件**——
+     **没有 `rootfs-index.json.sig`**。⇒ 签名资产只在 `latest` 上有，这两条不是同一套文件，登记时别合并成一个数。
+   在 ①②③ 走完之前，§8.4 这条不许读成「已解决」；上面 11:41 那遍已经把「本仓一件 rootfs 都没有」这句**作废**了——现在有 7 件，但 App 还取不到（缺 `.sig`、且索引内直链没改），所以结论没变：**能装 ≠ 更新链在**。B-T7 的「别真改 URL」红线仍在，本批没动那个字面量。

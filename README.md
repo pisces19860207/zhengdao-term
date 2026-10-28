@@ -2,7 +2,8 @@
 
 从 [证道](https://github.com/pisces19860207/zhengdao) 拆出的**独立终端 App**：真 PTY、Debian 13.7 rootfs、PRoot 免 root。证道本体只保留认知型 harness（抱朴）与浏览器（玄览）；要 shell 的时候，用这个。
 
-> **当前状态**：仓库刚拆出，代码迁移中；首个可安装版本以 [Releases](https://github.com/pisces19860207/zhengdao-term/releases) 为准（还没发就是还没有）。
+> **当前状态**：迁移已完成（2026-10-27 第四刀）——终端内核（PTY / rootfs / proot）与终端页都在本仓，
+> 主仓那边已删。首个可安装版本以 [Releases](https://github.com/pisces19860207/zhengdao-term/releases) 为准（还没发就是还没有）。
 
 ## 它是什么
 
@@ -45,9 +46,25 @@
 
 环境包支持断点续传与差分更新；网络抖动不用从头下。
 
+> **环境包从哪来**（2026-10-28 起，第二百六十批改订二的裁定）：**主仓 Releases 里的 rootfs 资产自 2026-10-28 起
+> 冻结，不再更新；新环境包见 [zhengdao-term Releases](https://github.com/pisces19860207/zhengdao-term/releases)。**
+> 主仓那批旧资产**不删**——老版本 App 装机还要按老 URL 来取；当天 11:41 复取实测：主仓 `latest` 的 rootfs **8 件一件没少**、
+> 时间戳仍是 2026-10-23T06:42，确实没删。
+> **搬迁当天做了一半**（11:41–11:44 复取 `api.github.com`）：本仓已多出一条 Release `rootfs-13.7-2026.10.28`
+> （2026-10-28T03:28:50Z 发布，7 件；`debian-13.7-base-arm64.tar.zst` 200,223,802 B，与主仓**同一个 sha256** `8d2f32e5…3683`，
+> 是同一份字节搬过来的，不是重建的），但还差两步才接得上：
+> ① 本仓这版**没有** `rootfs-index.json.sig`，而代码是「索引没签名就整份拒用」（`RootfsIndex.kt:148` 拼 `.sig`、`:195-197` 缺签即弃）；
+> ② 本仓那份 `rootfs-index.json`（469 B，与主仓逐字节相同）里的 `url` 与 `manifestUrl` **仍指向主仓**，
+> `terminal-core/src/main/java/com/example/zhengdao/rootfs/RootfsIndex.kt:133` 那个代码常量也还没改指（B-T7 红线，本批未动字面量）。
+> ⇒ 所以「差分更新」到今天**仍未发生**；逐条缺口与验签读数在 [`PROVENANCE.md`](PROVENANCE.md) §8.4，别读成「已经解决」。
+
 ## 权限（为什么需要，照实说）
 
-安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限；运行时申请与授权流程随终端内核一起进来（当前骨架期不会弹任何权限框）。
+安装包在 `AndroidManifest.xml` 里**声明**了下面这些权限。本仓**没有应用内的权限对话框**：全仓唯一的授权动作是
+入口页那个「授权」按钮，它跳的是**系统设置**页（`app/src/main/java/com/example/zhengdao/term/MainActivity.kt:75-83`），
+代码里没有 `requestPermissions(...)` / `registerForActivityResult` 申请点（第二百六十批实测 grep，命中 0）。
+所以下表里属于运行时权限的那几条（如 `POST_NOTIFICATIONS`）只能你在系统设置里给；不给就少一块功能（发不出保活通知），
+但 App 不会自己弹窗要你给。
 
 | 权限 | 为什么需要 |
 |---|---|
@@ -73,8 +90,12 @@
   - PRoot（GPL-2.0，聚合分发）
   - Debian rootfs 及其中的软件包（各自许可证）
   - JetBrains Maple Mono 字体（OFL-1.1）
-- 许可证正文随安装包内置；完整清单见主仓 `THIRD-PARTY-LICENSES.md` 与 `PROVENANCE.md`。
-- 本仓自己的同名文件：`LICENSE`（第一方条款）、`PROVENANCE.md`（来源与出处）、`THIRD-PARTY-LICENSES.md`（第三方清单与义务）。
+- 许可证正文在仓内 `licenses/`（Apache-2.0 / GPL-2.0 / GPL-3.0 / LGPL-3.0 / BSD 系 ＋ `NOTICES.txt`）；
+  **完整清单看本仓**的 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md) 与 [`PROVENANCE.md`](PROVENANCE.md)。
+  ⚠️ 正文目前**只入库、还没装配进 APK**，App 内也还没有「开源许可」阅读页 —— 这一条以
+  `PROVENANCE.md` §8「已知缺口」为准，别把上面的清单当成合规闭环已完成。
+- 本仓自己的同名文件：`LICENSE`（第一方条款）、`PROVENANCE.md`（来源与出处）、`THIRD-PARTY-LICENSES.md`（第三方清单与义务）；
+  主仓（证道）的那三份**只覆盖主仓**（抱朴 ＋ 玄览），不覆盖本仓。
 
 ## 构建
 
@@ -88,7 +109,9 @@
 ./gradlew :app:assembleDebug      # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-本仓只有 `:app` 一个模块；终端内核（PTY / rootfs / proot）与共享层会在后续批次整模块迁入，届时构建脚本再动。
+本仓是**两个模块**：`:app`（壳与终端页）＋ `:terminal-core`（PTY / rootfs / proot，2026-10-27 第四刀整模块迁入）。
+共享层（主仓的 `:core` / `:native-core`）**不建成本仓模块**，以随仓 `libs/*.aar` 复用，
+所以克隆本仓直接能编 —— 不需要 `mavenLocal()`，也不要求主仓先发布一次。
 
 ## 致谢
 
@@ -102,4 +125,4 @@
 
 ---
 
-**English (short)**: Zhengdao Terminal is a standalone Android terminal app split out of [Zhengdao](https://github.com/pisces19860207/zhengdao): a real PTY, a Debian 13.7 rootfs and PRoot, no root, no Termux, no Shizuku. Zhengdao itself keeps only the agent harness (Baopu) and the browser (Xuanlan). Requires Android 16+ on arm64. The terminal is **not a security sandbox** — run only commands you trust. Code migration is in progress; installable builds will appear under Releases.
+**English (short)**: Zhengdao Terminal is a standalone Android terminal app split out of [Zhengdao](https://github.com/pisces19860207/zhengdao): a real PTY, a Debian 13.7 rootfs and PRoot, no root, no Termux, no Shizuku. Zhengdao itself keeps only the agent harness (Baopu) and the browser (Xuanlan). Requires Android 16+ on arm64. The terminal is **not a security sandbox** — run only commands you trust. Migration is complete (fourth cut, 2026-10-27): the terminal core and the terminal screen both live in this repo, as two modules (`:app` + `:terminal-core`). Installable builds will appear under Releases.
