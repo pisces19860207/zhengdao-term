@@ -1,0 +1,795 @@
+// 独立开发声明：本文件为本项目原创，不含对第三方源码的拷贝。
+// 依据的公开接口：Android 官方文档（应用外部目录、java.io.File 语义）。
+package com.example.zhengdao.core.kb
+
+// 第二百四十批（抽 :core）可见性说明：`shouldCreate` / `countRawIn` 原为 `internal`，现放宽为
+// `public`：Kotlin 的 `internal` 是模块级的，而它们的单测留在 `:app`。两者都是纯判据/纯计数，
+// 放宽对行为零影响。
+
+import android.content.Context
+import androidx.core.content.edit
+import com.example.zhengdao.core.AppPrefs
+import com.example.zhengdao.core.RunLog
+import com.example.zhengdao.core.TimeFormats
+import com.example.zhengdao.core.ZhengdaoDirs
+import java.io.File
+import java.util.Locale
+
+/**
+ * 资料库（P0：「丢进去就能用」的机械层；157 目录收口后改线）。
+ *
+ * 定位：把用户的私人文件变成一个**终端里的 agent 能自动找到并使用**的资料库。
+ * 本层只做**机械活**（不涉及任何大模型）：
+ *   1) 预置骨架目录：`产物/`（157 前是 `资料库/整理/`）＋ 说明文档
+ *   2) 扫描私有原件区 → 生成 `产物/00-目录.md` 清单（原子写）
+ *   3) 分发指路到 guest `/root/`：`AGENTS.md`（AGENTS.md 开放标准，25+ 工具通用）＋ `CLAUDE.md`
+ *
+ * ## 157 目录收口（用户 2026-10-23 拍板，工作区可见目录恰四个：产物/回收站/备份/记忆）
+ * - **私有原件** ＝ `filesDir/baopu/library/原始/`（`ZhengdaoDirs.rawDirUnder`）：
+ *   157 前终端侧自己建 `<工作区>/资料库/原始/` 给用户放原件；收口后原件区**并入抱朴
+ *   私有原件区**（终端 agent 军规本就读不到原件，搬走照样成立），存量由
+ *   `baopu/MemoryLayout` 迁移搬入（冲突不覆盖）。
+ * - **产物** ＝ `<工作区>/产物/`（157 前 `<工作区>/资料库/整理/`）：清单与说明文档落这里。
+ * - **旧根** `<工作区>/资料库/`（[root]）降为 legacy：只用于存量识别、迁移对账与
+ *   「别处还有一份资料」的候选查找，**不再新建、不再写**。
+ * - **改版**（157 前 `资料库/改版/`）是死目录（全仓无引用）⇒ 迁去
+ *   `产物/_迁移存档/改版/`，本类不再认。
+ *
+ * 四条铁律（详见 docs/知识库-设计施工图.md）：
+ *   - **原件不动**：私有原件区只读，任何程序都不改、不删、不改名；用户要改文件 → 产物进 `产物/`
+ *   - **写入者唯一**：`产物/00-目录.md` 只有本类会写；agent 与抱朴对其只读，避免互相覆盖成空文件
+ *   - **原子写**：先写 `.tmp` 再 rename，绝不产生"半个文件"；写前校验非空、留 `.bak` 可回滚
+ *   - **尊重用户删除**：用户删掉资料库目录后，不再重建（无流氓行为）
+ *
+ * 开销：常态下只做"文件是否存在"的检查；有变化才写盘。扫描在后台线程，不拖慢启动。
+ */
+object KnowledgeBase {
+
+    /** 旧资料库根目录名（157 前的 `<工作区>/资料库/`）——**legacy**，仅存量识别用。 */
+    const val DIR = ZhengdaoDirs.LEGACY_LIBRARY_DIR
+
+    /** 旧原件子目录名（157 前 `资料库/原始/`）——legacy，迁移对账用。 */
+    const val SUB_RAW = "原始"
+
+    const val F_README = "说明.md"
+    const val F_AGENTS = "AGENTS.md"
+    const val F_CLAUDE = "CLAUDE.md"
+    const val F_INDEX = "00-目录.md"
+
+    /** 内容指纹：清单内容未变则不重写 */
+    private const val KEY_SIG = "kb_sig_v1"
+    /** 是否由 App 创建过（用于区分"还没建"与"用户删了"） */
+    private const val KEY_CREATED = "kb_created_v1"
+    /** 用户删除标记：置位后不再重建 */
+    private const val KEY_DELETED = "kb_deleted_v1"
+    /** 总开关（默认开）。关闭后不预置、不扫描、不分发 */
+    private const val KEY_ENABLED = "kb_enabled_v1"
+    /** 补摘要任务是否正在进行（P2 用；此刻由 App 写入，UI 只读） */
+    private const val KEY_BUSY = "kb_busy_v1"
+    /** 补摘要任务开始的时间戳（用于识别"上一轮留下的僵尸标记"） */
+    private const val KEY_BUSY_AT = "kb_busy_at_v1"
+
+    /**
+     * 「整理中」标记的存活上限。
+     * 超过它就认为那一轮已经不在了（App 被系统杀掉、或进程重启后残留）——
+     * 否则设置页会永远显示「整理中」，用户会以为卡死了。
+     */
+    private const val BUSY_STALE_MS = 5L * 60L * 1000L
+
+    /**
+     * 单次扫描文件数上限——防极端情况（用户丢了上万个小文件）拖住设备。
+     *
+     * ⚠️ **达到上限时必须显式告知**（清单里写一行、设置页状态带后缀）——
+     * 静默截断会让用户以为"资料全在这儿了"。
+     * 公开给 UI 用（设置页 `SettingsScreen` 判"是否已达上限"）。
+     */
+    const val MAX_SCAN = 2000
+
+    /** 我们写入文件的标记行，用于识别"这段是本 App 写的" */
+    private const val MARK = "<!-- zhengdao-kb -->"
+
+    // ── 路径 ────────────────────────────────────────────────────────────────
+
+    /** 旧资料库根（`<工作区>/资料库/`）——157 后 legacy，仅存量识别与迁移对账用。 */
+    fun root(ctx: Context): File = File(ZhengdaoDirs.hostDir(ctx), DIR)
+
+    /**
+     * 私有原件区（157 起：`filesDir/baopu/library/原始/`）。
+     * 与抱朴侧 `LibraryPaths.rawDirUnder` 同一目录——终端 agent 军规本就读不到原件，
+     * 收口后两边共用一份，存量由 MemoryLayout 迁入。
+     */
+    fun rawDir(ctx: Context): File = ZhengdaoDirs.rawDirUnder(ctx.filesDir)
+
+    /** 产物目录（157 起：`<工作区>/产物/`）——清单与说明文档落这里。 */
+    fun doneDir(ctx: Context): File = File(ZhengdaoDirs.hostDir(ctx), ZhengdaoDirs.PRODUCTS_DIR)
+
+    fun indexFile(ctx: Context): File = File(doneDir(ctx), F_INDEX)
+
+    /** guest `/root` 的宿主侧路径（ProotLauncher 的 bind：filesDir/home → /root） */
+    private fun guestHome(ctx: Context): File = File(ctx.filesDir, "home")
+
+    /** 总开关（默认开）。 */
+    fun isEnabled(ctx: Context): Boolean = AppPrefs.prefs(ctx).getBoolean(KEY_ENABLED, true)
+
+    fun setEnabled(ctx: Context, on: Boolean) {
+        AppPrefs.prefs(ctx).edit { putBoolean(KEY_ENABLED, on) }
+    }
+
+    /**
+     * 供设置页显示的**四态**（"能读"与"整理好"是两件事）：
+     * - `未挂载` —— 开关关 / 目录不存在 / `原始/` 是空的
+     * - `已挂载` —— agent 已能读到（清单＋指路就绪）
+     * - `整理中` —— 抱朴正在补摘要（P2）
+     * - `已整理` —— 有摘要产出（P2）
+     *
+     * ⚠️ 本方法会读目录，**必须在 IO 线程调用**。
+     */
+    enum class State { DISABLED, NOT_MOUNTED, MOUNTED, BUSY, ORGANIZED }
+
+    data class Status(
+        val state: State,
+        val files: Int,
+        val path: String,
+    )
+
+    fun status(ctx: Context): Status {
+        val r = doneDir(ctx)
+        val path = r.absolutePath
+        if (!isEnabled(ctx)) return Status(State.DISABLED, 0, path)
+        if (!r.isDirectory) return Status(State.NOT_MOUNTED, 0, path)
+        // ⚠️ 用 isBusy() 而不是裸读 KEY_BUSY：它会自愈"上一轮留下的僵尸标记"（见 BUSY_STALE_MS）
+        if (isBusy(ctx)) {
+            return Status(State.BUSY, countRaw(ctx), path)
+        }
+        val n = countRaw(ctx)
+        if (n == 0) return Status(State.NOT_MOUNTED, 0, path)
+        // 有摘要（清单里带"摘要"小节）视为已整理
+        val organized = runCatching {
+            indexFile(ctx).isFile && indexFile(ctx).readText(Charsets.UTF_8).contains("## 文件摘要")
+        }.getOrDefault(false)
+        return Status(if (organized) State.ORGANIZED else State.MOUNTED, n, path)
+    }
+
+    /** 轻量计数（只数文件，不建对象列表）。 */
+    private fun countRaw(ctx: Context): Int = countRawIn(rawDir(ctx))
+
+    /** 同上，但指定 `原始/` 目录本身（提示"别处还有一份带资料的资料库"时要用）。 */
+    fun countRawIn(base: File): Int {
+        if (!base.isDirectory) return 0
+        var n = 0
+        val stack = ArrayDeque<File>()
+        stack.addLast(base)
+        while (stack.isNotEmpty() && n < MAX_SCAN) {
+            val dir = stack.removeLast()
+            for (f in dir.listFiles() ?: continue) {
+                if (isSymlink(f)) continue
+                if (f.isDirectory) stack.addLast(f) else if (f.isFile) n++
+            }
+        }
+        return n
+    }
+
+    /**
+     * 手动触发一次"重新整理"（设置页按钮）。
+     *
+     * ⚠️ 与自动流程的关键区别：这是**用户的显式要求**，所以要 forced = true
+     * —— 否则 [ensureScaffold] 看到"用户已删除"标记会拒绝重建，这个按钮就成了点不动的摆设（E-061）。
+     */
+    fun requestRebuild(ctx: Context) {
+        if (!isEnabled(ctx)) return
+        val t = Thread({
+            runCatching {
+                if (ensureScaffold(ctx, forced = true)) dispatch(ctx)
+                rebuildIndex(ctx)
+            }.onFailure { RunLog.log("资料库手动整理失败：${it.message}") }
+        }, "zd-knowledge-base-rebuild")
+        t.isDaemon = true
+        t.start()
+    }
+
+    // ── 主入口 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 每次启动终端会话前调用（由 ProotLauncher.buildLaunchPlan 触发）。
+     *
+     * 同步部分只有"预置骨架 ＋ 分发指路"——都是小文件写，毫秒级；
+     * **扫描与清单生成放后台线程**，绝不阻塞启动。
+     */
+    fun refresh(ctx: Context) {
+        runCatching {
+            if (!isEnabled(ctx)) return@runCatching
+            if (!ensureScaffold(ctx)) return@runCatching
+            dispatch(ctx)
+            val t = Thread({
+                runCatching { rebuildIndex(ctx) }
+                    .onFailure { RunLog.log("资料库清单生成失败：${it.message}") }
+            }, "zd-knowledge-base-index")
+            t.isDaemon = true
+            t.start()
+        }.onFailure { RunLog.log("资料库刷新失败：${it.message}") }
+    }
+
+    /**
+     * 轻量自动刷新（2026-10-11 新增）。
+     *
+     * 起因是真机现场：用户用文件管理器/电脑把资料放进 `资料库/原始/`，回到 App 却仍是
+     * "未挂载 · 还没放资料" —— [refresh] 只在**启动终端会话前**跑（ProotLauncher），
+     * 而用户此时根本没开会话。于是"放了东西没反应"。
+     *
+     * 与 [refresh] 的分工：本方法**不碰骨架**（不替用户决定建目录、也不写分发指路文件），
+     * 只在后台跑一次 [rebuildIndex] —— 它自己会先比指纹，没变就是一次目录扫描的量级。
+     * 由设置页「回到前台」时调用。
+     */
+    fun autoRefresh(ctx: Context) {
+        runCatching {
+            if (!isEnabled(ctx)) return@runCatching
+            if (!doneDir(ctx).isDirectory) return@runCatching
+            val t = Thread({
+                runCatching { rebuildIndex(ctx) }
+                    .onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
+            }, "zd-knowledge-base-auto")
+            t.isDaemon = true
+            t.start()
+        }.onFailure { RunLog.log("资料库自动刷新失败：${it.message}") }
+    }
+
+    /**
+     * 其他地方还放着资料的「资料库」候选（给设置页提示"你的资料可能在别处"）。
+     *
+     * 只看**我们知道的**那几个位置：上一次用过的自定义工作区（[ZhengdaoDirs.prevHostDir]）、
+     * 默认工作区 `Download/证道`、仅私有模式的 App 外部目录。**刻意不做全盘搜索** ——
+     * 全盘扫一遍既慢又越界。也刻意不含"当前工作区"（那是卡片本来就在显示的那份）。
+     *
+     * ⚠️ 本方法会读目录，**必须在 IO 线程调用**。
+     *
+     * @return 资料库根路径 → `原始/` 里的文件数（只含有文件、且不是当前那一个）
+     */
+    fun otherPopulated(ctx: Context): List<Pair<String, Int>> = runCatching {
+        val cur = rawDir(ctx).absolutePath.trimEnd('/')
+        val candidates = LinkedHashSet<File>()
+        ZhengdaoDirs.prevHostDir(ctx)?.let { candidates.add(File(it, DIR)) }
+        candidates.add(File(ZhengdaoDirs.defaultDir(ctx), DIR))
+        candidates.add(File(ZhengdaoDirs.privateDir(ctx), DIR))
+        candidates.map { File(it, SUB_RAW) }
+            .filter { it.absolutePath.trimEnd('/') != cur }
+            .mapNotNull { raw ->
+                val n = countRawIn(raw)
+                val parent = raw.parentFile
+                if (n > 0 && parent != null) parent.absolutePath to n else null
+            }
+    }.getOrDefault(emptyList())
+
+    /**
+     * 把**另一份**资料库 `原始/` 里的文件复制进当前资料库的 `原始/`。
+     *
+     * 只增不减（这条与整个工作区的纪律一致）：
+     * - 同名文件**不覆盖**（用户可能已经在新的那份里改过）
+     * - 软链跳过（不跟随、也不复制链接本身）
+     * - 源文件一份不动；失败的单条跳过但**计数并落日志**（§B 79 / 第七十一批⑤），
+     *   返回值仍是成功的条数（调用方在 UI/设置页，本单红线不碰——失败数暂不入返回值）
+     *
+     * 用途：换工作区后把旧资料一起带过来；以及设置页"另外发现一份带资料的资料库 → 复制过来"。
+     *
+     * ⚠️ 会做大量文件 IO，**必须在后台/IO 线程调用**。
+     *
+     * @return 实际复制过来的文件数
+     */
+    fun copyRawInto(ctx: Context, srcRaw: File): Int = runCatching {
+        val dstRaw = rawDir(ctx)
+        val srcAbs = srcRaw.absolutePath.trimEnd('/')
+        val dstAbs = dstRaw.absolutePath.trimEnd('/')
+        // 源就是目标 / 目标在源里面 ⇒ 什么都不做（否则会自己复制自己）
+        if (srcAbs == dstAbs || dstAbs.startsWith("$srcAbs/")) return@runCatching 0
+        val srcFiles = srcRaw.walkTopDown()
+            .filter { it.isFile && !isSymlink(it) }
+            .sortedBy { it.absolutePath }
+            .take(MAX_SCAN)
+            .toList()
+        var copied = 0
+        var failed = 0
+        var firstFail: String? = null
+        for (src in srcFiles) {
+            val rel = src.absolutePath.removePrefix("$srcAbs/")
+            val dst = File(dstRaw, rel)
+            if (dst.exists()) continue
+            // 第七十一批⑤：单条失败不再无声——计数＋记住首个失败的相对路径；
+            // 成功路径一行没动（mkdirs→copyTo 照旧）。
+            val ok = runCatching {
+                dst.parentFile?.mkdirs()
+                src.copyTo(dst, overwrite = false)
+            }.isSuccess
+            if (ok) {
+                copied++
+            } else {
+                failed++
+                if (firstFail == null) firstFail = rel
+            }
+        }
+        if (failed > 0) {
+            RunLog.log("资料复制：成功 $copied，失败 $failed（首个失败：$firstFail）——src=$srcAbs")
+        } else if (copied > 0) {
+            RunLog.log("资料库：从 $srcAbs 复制了 $copied 个文件到 $dstAbs")
+        }
+        copied
+    }.getOrDefault(0)
+
+    /**
+     * 复制过来之后就地重建一次清单（[copyRawInto] 的搭档；同样要在后台线程调用）。
+     */
+    fun rebuildAfterCopy(ctx: Context) {
+        runCatching { rebuildIndex(ctx) }
+            .onFailure { RunLog.log("资料库复制后重建清单失败：${it.message}") }
+    }
+
+    // ── 预置骨架 ────────────────────────────────────────────────────────────
+
+    /**
+     * 确定目录与骨架文件存在。
+     * @param forced true = 用户显式要求（设置页「重新整理」／重新打开开关），
+     *   此时即使他此前删过资料库也要重建（E-061）。
+     * @return true = 资料库可用（后续扫描/分发照常）；false = 不该用（仅私有模式 / 用户已删除）
+     */
+    fun ensureScaffold(ctx: Context, forced: Boolean = false): Boolean {
+        val prefs = AppPrefs.prefs(ctx)
+        val r = doneDir(ctx)
+
+        // 仅私有模式：不主动预置（那是"在意痕迹"的场景，不该凭空塞东西）；
+        // 但用户既然自己建了这个目录，就说明他想用 —— 补齐骨架。
+        if (!ZhengdaoDirs.isShared(ctx)) {
+            if (!r.isDirectory) return false
+            return seedFiles(ctx)
+        }
+
+        if (r.isDirectory) {
+            prefs.edit { putBoolean(KEY_CREATED, true) }
+            return seedFiles(ctx)
+        }
+
+        // 目录不存在：是我们建过、被用户删了？还是从没建过？
+        if (!shouldCreate(
+                everCreated = prefs.getBoolean(KEY_CREATED, false),
+                userDeleted = prefs.getBoolean(KEY_DELETED, false),
+                forced = forced,
+            )
+        ) {
+            prefs.edit { putBoolean(KEY_DELETED, true) }
+            return false
+        }
+
+        if (!r.mkdirs()) return false
+        val ok = seedFiles(ctx)
+        if (ok) {
+            prefs.edit {
+                putBoolean(KEY_CREATED, true)
+                putBoolean(KEY_DELETED, false)
+            }
+            RunLog.log("资料库已预置：${r.absolutePath}")
+        }
+        return ok
+    }
+
+    /**
+     * 目录不存在时该不该建 —— 纯函数，便于单测（E-061）。
+     *
+     * 规则：从没建过 ⇒ 自动预置；用户删过 ⇒ **尊重用户的删除**、不自动重建；
+     * 用户显式要求（设置页「重新整理」／重新打开开关）⇒ 重建。
+     * 后两条的分界线就是"谁在要求"：自动流程不许复活他删掉的东西，手动按钮是他自己按的。
+     */
+    fun shouldCreate(everCreated: Boolean, userDeleted: Boolean, forced: Boolean): Boolean =
+        forced || (!everCreated && !userDeleted)
+
+    /** 建私有原件区与产物目录 ＋ 写说明文档（幂等：内容未变不重写）。
+     *  157 起说明文档落 `产物/`（旧 `资料库/` 根不再新建）。 */
+    private fun seedFiles(ctx: Context): Boolean {
+        rawDir(ctx).mkdirs()
+        doneDir(ctx).mkdirs()
+        val r = doneDir(ctx)
+        writeIfChanged(File(r, F_README), readmeText())
+        writeIfChanged(File(r, F_AGENTS), libraryAgentsText())
+        writeIfChanged(File(r, F_CLAUDE), "@AGENTS.md\n")
+        return r.isDirectory
+    }
+
+    // ── 分发指路（给终端里的各种 agent）─────────────────────────────────────
+
+    /**
+     * 写 guest `/root/AGENTS.md` ＋ `/root/CLAUDE.md`。
+     *
+     * 为什么写这里：终端 agent 的**起点目录就是 `/root`**（`-w /root`），
+     * 写这里才能被自动读到。`AGENTS.md` 是跨 agent 开放标准（25+ 工具原生支持）；
+     * Claude Code 例外（它读 `CLAUDE.md`），故补一份只含 `@AGENTS.md` 的瘦文件。
+     *
+     * ⚠️ 与抱朴那份**完全分开**：抱朴读的是 `<XDG_CONFIG_HOME>/opencode/AGENTS.md`，
+     *    两者路径不同、用途不同（抱朴那份只说"环境"，本份额外指路资料库）。
+     */
+    private fun dispatch(ctx: Context) {
+        val home = guestHome(ctx)
+        if (!home.isDirectory && !home.mkdirs()) return
+        writeOrAppend(File(home, F_AGENTS), dispatchAgentsText(ctx))
+        writeIfChanged(File(home, F_CLAUDE), "@AGENTS.md\n")
+    }
+
+    // ── 扫描 ＋ 清单 ────────────────────────────────────────────────────────
+
+    private data class Item(val rel: String, val size: Long, val mtime: Long)
+
+    /**
+     * 扫描 `原始/`（递归，**跳过符号链接**）。
+     *
+     * ⚠️ 跳软链是必须的：本项目的缓存统计曾因 `walkTopDown()` 跟随软链而虚报约 2 倍
+     *    （见 CacheCleaner 的注释），此处沿用 `Files.isSymbolicLink` 判定。
+     */
+    /** 扫描结果：条目 ＋ **是否因达到 [MAX_SCAN] 而截断**（截断必须告知，不能静默）。 */
+    private class ScanResult(val items: List<Item>, val truncated: Boolean)
+
+    private fun scanRaw(ctx: Context): List<Item> = scanRawFull(ctx).items
+
+    private fun scanRawFull(ctx: Context): ScanResult {
+        val base = rawDir(ctx)
+        if (!base.isDirectory) return ScanResult(emptyList(), false)
+        val out = ArrayList<Item>()
+        val stack = ArrayDeque<File>()
+        stack.addLast(base)
+        var truncated = false
+        while (stack.isNotEmpty() && out.size < MAX_SCAN) {
+            val dir = stack.removeLast()
+            val children = dir.listFiles() ?: continue
+            for (f in children) {
+                if (isSymlink(f)) continue
+                when {
+                    f.isDirectory -> stack.addLast(f)
+                    f.isFile -> {
+                        val rel = f.absolutePath.removePrefix(base.absolutePath).trimStart(File.separatorChar)
+                        out.add(Item(rel, f.length(), f.lastModified()))
+                        if (out.size >= MAX_SCAN) {
+                            // 收到上限就停 ⇒ 后面可能还有文件（此时无法确知，故用"可能"措辞）
+                            truncated = true
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        out.sortBy { it.rel }
+        return ScanResult(out, truncated)
+    }
+
+    private fun isSymlink(f: File): Boolean =
+        runCatching { java.nio.file.Files.isSymbolicLink(f.toPath()) }.getOrDefault(false)
+
+    /**
+     * 供 P2 摘要流程使用：列出 `原始/` 里的文件（相对路径 + 大小 + 修改时间）。
+     *
+     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链未接线，本函数是链头**。
+     * 现状：`git grep -w listRaw` 只命中本处定义（零调用）。但它不是"写完忘了删"——
+     * 摘要链三件（[listRaw] 取输入 → [writeSummaries] 落盘 → [markBusy] 标记进行中）
+     * 都齐了，缺的是**触发者**（要调 LLM 逐文件生成摘要，属独立功能，未立单）。
+     * 单独接上它没有场景（唯一消费者就是那条链）；删它则要连 `KnowledgeBaseSummarizer`
+     * 的写入侧一起删（那是把半个功能删掉，不是清理死代码）。
+     * **一同存亡条件**：P2 摘要立单时一并接上；若决定不做摘要功能，应连同
+     * `KnowledgeBaseSummarizer.renderInto` 与 [writeSummaries] 整条链一起删。
+     */
+    fun listRaw(ctx: Context): List<Pair<String, Long>> =
+        scanRaw(ctx).map { it.rel to it.size }
+
+    /** 重建 `整理/00-目录.md`。内容未变则跳过。 */
+    fun rebuildIndex(ctx: Context) {
+        if (!rawDir(ctx).isDirectory) return
+        val scan = scanRawFull(ctx)
+        val items = scan.items
+
+        // 指纹 = 工作区路径 ＋ 每个文件的相对路径/大小/修改时间
+        val sb = StringBuilder(ZhengdaoDirs.hostDir(ctx).absolutePath)
+        for (it in items) sb.append('|').append(it.rel).append(':').append(it.size).append(':').append(it.mtime)
+        val sig = sb.toString().hashCode().toString()
+
+        val prefs = AppPrefs.prefs(ctx)
+        // 指纹没变**且清单文件还在**才跳过：资料库被整个删掉再重建时，指纹可能恰好没变
+        // （比如 `原始/` 本来就是空的），只比指纹会让 `整理/00-目录.md` 永远不再生成（E-061）。
+        val idx = indexFile(ctx)
+        if (prefs.getString(KEY_SIG, null) == sig && idx.isFile) return
+
+        val text = indexText(items, scan.truncated)
+        // 重渲染是"整份覆盖"，而模板里没有 `## 文件摘要` 一节 ⇒ 不搬回来的话，
+        // 只要 `原始/` 有增删改（或清单被删后重建），模型跑出来的摘要就被静默抹掉。
+        // 搬之前先读旧清单；搬的时候只保留原件还在的行（见 [KnowledgeBaseSummarizer.carryOverSummary]）。
+        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull()
+        val carried = KnowledgeBaseSummarizer.carryOverSummary(old, text)
+        if (atomicWriteChecked(idx, carried)) {
+            prefs.edit { putString(KEY_SIG, sig) }
+        }
+    }
+
+    // ── P2：摘要回写 ────────────────────────────────────────────────────────
+
+    /**
+     * 把摘要写进 `整理/00-目录.md` 的 `## 文件摘要` 一节（P2）。
+     *
+     * ⚠️ **只写 `整理/`** —— 绝不碰 `原始/`（铁律一）。这是 P2 唯一的落盘点。
+     *
+     * 三件必须同时成立的事：
+     * 1. 清单文件**已存在**（摘要只是**追加**一节，不能凭空造一份清单出来 —— 否则
+     *    "清单还没生成"这个状态会被摘要悄悄盖过去）
+     * 2. 合并后的正文**非空**（[KnowledgeBaseSummarizer.renderInto] 返回 null 就什么都不写）
+     * 3. 写盘走 [atomicWriteChecked]（留 `.bak`、空内容拒绝）
+     *
+     * ⚠️ 写入后**故意不更新** [KEY_SIG]：摘要不是"原始文件变了"，更新指纹会让下一次
+     * 真该重算清单的改动被跳过。代价只是"有摘要时清单会多渲染一次"，无害。
+     *
+     * 保留原因（第二十七批审计，2026-10-18）：**P2 摘要链的落盘点，链未接线**。
+     * `git grep -w writeSummaries` 只命中本处定义；但它是 P2 唯一的写盘口（"[P2] 唯一的
+     * 落盘点"就在上一段），删了等于宣布"摘要永不落盘"。它的三个前置守则都还活着
+     * （`carryOverSummary` 被 [rebuildIndex] 调用），说明这条链不是全死、只是缺触发者。
+     * **一同存亡条件**：同 [listRaw]——P2 立单时接上；不做就整条链一起删。
+     *
+     * @return true = 确实写入了
+     */
+    fun writeSummaries(ctx: Context, summaries: Map<String, String>): Boolean {
+        val idx = indexFile(ctx)
+        if (!idx.isFile) return false
+        val old = runCatching { idx.readText(Charsets.UTF_8) }.getOrNull() ?: return false
+        val merged = KnowledgeBaseSummarizer.renderInto(old, summaries) ?: return false
+        return atomicWriteChecked(idx, merged)
+    }
+
+    /**
+     * 标记"摘要任务正在跑"（设置页状态显示为「整理中」）。
+     *
+     * 与 [KEY_BUSY] 配套：这是**进程内的即时状态**，App 被杀掉后不会残留 ——
+     * 用一个启动时的时间戳来判断"这个标记是不是上一轮回来的僵尸"（超过
+     * [BUSY_STALE_MS] 就当作已经不在跑，避免状态永远卡在「整理中」）。
+     *
+     * 保留原因（第二十七批审计，2026-10-18）：**状态机的输入端，标记者整条缺失**。
+     * `git grep -w markBusy` 只命中本处定义；而读端 [isBusy] 活着（[status] `:113`
+     * 用它产出 `State.BUSY`），清端 [clearBusy] 也活着（[isBusy] 的僵尸自愈里调用）。
+     * 也就是说 `status()` 的 BUSY 分支**永远走不到**——这是个真缺口，但补它的位置
+     * 不在"清理批"里能定的：真正该标 busy 的是 P2 摘要（调 LLM，几分钟级）；
+     * [rebuildIndex] 是毫秒到秒级的同步重渲染，标了也几乎看不到中间态（装样子）。
+     * **一同存亡条件**：P2 立单时接进摘要流程；若不做摘要，则连同 [status] 的
+     * `State.BUSY` 分支与 `KEY_BUSY`/`KEY_BUSY_AT` 一起删（那是 10 行的连带改动，
+     * 超出"1 小时清理"的边界）。
+     */
+    fun markBusy(ctx: Context) {
+        AppPrefs.prefs(ctx).edit {
+            putBoolean(KEY_BUSY, true)
+            putLong(KEY_BUSY_AT, System.currentTimeMillis())
+        }
+    }
+
+    fun clearBusy(ctx: Context) {
+        AppPrefs.prefs(ctx).edit { putBoolean(KEY_BUSY, false) }
+    }
+
+    /** 是否正在整理（含"僵尸标记"自愈：超过 [BUSY_STALE_MS] 视为没在跑）。 */
+    fun isBusy(ctx: Context): Boolean {
+        val p = AppPrefs.prefs(ctx)
+        if (!p.getBoolean(KEY_BUSY, false)) return false
+        val at = p.getLong(KEY_BUSY_AT, 0L)
+        if (at > 0 && System.currentTimeMillis() - at > BUSY_STALE_MS) {
+            clearBusy(ctx)
+            return false
+        }
+        return true
+    }
+
+    private fun indexText(items: List<Item>, truncated: Boolean = false): String {
+        val sb = StringBuilder()
+        // B-补-24（2026-10-16）：共享 formatter（旧写法每次新建 SimpleDateFormat）
+        val ts = TimeFormats.minuteStamp()
+        sb.append("# 资料库目录\n\n")
+        sb.append("> 由证道自动生成 · 更新于 ").append(ts).append("  \n")
+        sb.append("> 原始文件在 `原始/` 里（**只读**）。本文件只是索引。\n\n")
+        if (items.isEmpty()) {
+            sb.append("_（还没有文件。把资料放进 `原始/`，就会出现在这里。）_\n")
+        } else {
+            sb.append("共 **").append(items.size).append("** 个文件：\n\n")
+            if (truncated) {
+                // 不静默：清单是给 agent 和用户看的，必须自己说出"这不全"
+                sb.append("> ⚠️ **已达单次扫描上限 ").append(MAX_SCAN)
+                    .append(" 个 —— 这里只列出了前 ").append(MAX_SCAN)
+                    .append(" 个；`原始/` 里可能还有文件**未**列出来。**\n\n")
+            }
+            for (it in items) {
+                sb.append("- `").append(it.rel).append("` — ").append(humanSize(it.size)).append("\n")
+            }
+        }
+        sb.append("\n---\n\n")
+        sb.append("## 给 AI 的提示（重要）\n\n")
+        sb.append("- 上面这些文件在 `原始/` 里，**只读** —— 不要修改、改名或删除它们\n")
+        sb.append("- 用户要求「帮我改这个文件」时：读原件，把**完整改版**写进 `改版/`，并在回复里说明「原件没动」\n")
+        sb.append("- 本文件（`00-目录.md`）由证道维护 —— **不要往里写东西**，否则会和 App 的写入互相覆盖\n")
+        sb.append("- 需要细节时直接读 `原始/` 里的原文件\n")
+        return sb.toString()
+    }
+
+    // ── 写入工具 ────────────────────────────────────────────────────────────
+
+    /** 原子写：先写 `.tmp` 再 rename（rename 是原子操作，绝不产生半个文件）。 */
+    private fun atomicWrite(target: File, text: String) {
+        target.parentFile?.mkdirs()
+        val tmp = File(target.parentFile, target.name + ".tmp")
+        tmp.writeText(text, Charsets.UTF_8)
+        if (!tmp.renameTo(target)) {
+            runCatching { target.writeText(text, Charsets.UTF_8) }
+            runCatching { tmp.delete() }
+        }
+    }
+
+    /**
+     * 带校验的原子写：空内容拒绝写入；覆盖前留 `.bak` 可回滚。
+     * @return true = 已写入或内容本来就一致
+     */
+    private fun atomicWriteChecked(target: File, text: String): Boolean {
+        if (text.isBlank()) return false
+        val old = if (target.isFile) runCatching { target.readText(Charsets.UTF_8) }.getOrNull() else null
+        if (old == text) return true
+        if (old != null) {
+            runCatching {
+                File(target.parentFile, target.name + ".bak").writeText(old, Charsets.UTF_8)
+            }
+        }
+        atomicWrite(target, text)
+        return true
+    }
+
+    /** 内容未变不重写（幂等，避免无意义的写盘与 mtime 抖动）。 */
+    private fun writeIfChanged(target: File, text: String) {
+        runCatching {
+            val old = if (target.isFile) target.readText(Charsets.UTF_8) else null
+            if (old == text) return
+            atomicWrite(target, text)
+        }
+    }
+
+    /**
+     * 写入，但**不覆盖别人的内容**：
+     * - 文件不存在 → 写
+     * - 已有我们的标记（MARK）→ 整份更新
+     * - 已有别人的内容 → **追加**我们的段落（不删别人的）
+     */
+    private fun writeOrAppend(target: File, text: String) {
+        runCatching {
+            if (!target.isFile) {
+                atomicWrite(target, text)
+                return
+            }
+            val cur = target.readText(Charsets.UTF_8)
+            when {
+                cur.contains(MARK) -> if (cur != text) atomicWrite(target, text)
+                cur.contains(text) -> Unit
+                else -> atomicWrite(target, cur.trimEnd() + "\n\n" + text)
+            }
+        }
+    }
+
+    private fun humanSize(n: Long): String = when {
+        n >= 1024L * 1024L -> String.format(Locale.CHINA, "%.1f MB", n / 1024.0 / 1024.0)
+        n >= 1024L -> String.format(Locale.CHINA, "%.1f KB", n / 1024.0)
+        else -> "$n B"
+    }
+
+    // ── 文案 ────────────────────────────────────────────────────────────────
+
+    /** `产物/说明.md` —— 给**用户**看，通篇人话、不出现任何技术词。 */
+    private fun readmeText(): String = """
+        # 这个文件夹是什么
+
+        这是你的**产物**文件夹：证道帮你整理资料时，生成的清单就放在这里。
+        你丢进 `投递/` 的原件，证道另外收在 App 自己管的地方——终端里的 AI 读得到，
+        别的程序看不到、也改不了。
+
+        ## 怎么用
+
+        1. 把你的文件放进 `投递/`（**放进去不限格式**：txt、md、word、pdf……）
+        2. 打开终端，直接问 AI —— 它会自己去读
+        3. 就这样，不用做别的
+
+        ## 两个文件夹，各管一件事
+
+        | 文件夹 | 是什么 | 你能干什么 |
+        |---|---|---|
+        | `投递/` | 你放原件的地方 | 随便放、随便删 |
+        | `产物/` | 证道生成的目录（清单）：资料库里有什么 | 看看就好，别手动改 |
+
+        ## 你的东西安全吗
+
+        - 文件**全部存在你自己的手机上**；**证道本身不会把它们发出去**（终端里的 AI 自己联网时另说）
+        - 你的原件证道**不会修改、不会删除**
+        - 就算你让 AI 帮忙改文件 —— 它也只会把改好的放进工作区，原件原地不动
+
+        ## 想让 AI 更快找到
+
+        - 文件放进 `投递/` 就行，它自己会看
+        - `txt`、`md` 最稳；**Word 的 `.docx`** 也能读（AI 自己敲一句就能解出来：
+          `busybox unzip -p 文件.docx word/document.xml`）
+        - 如果是 `pdf` 或很老的 `.doc`，AI 可能要先转一下格式，第一次会慢一点
+
+        $MARK
+    """.trimIndent()
+
+    /** `产物/AGENTS.md` —— 给 **agent** 看的说明书（详细版）。 */
+    private fun libraryAgentsText(): String = """
+        # AGENTS.md —— 用户资料库
+
+        $MARK
+        用户的私人资料由证道 App 统一收管在**私有原件区**（你读不到那里，也不要去翻），
+        你能看到的是证道整理出来的**产物**。所以下面的规则是硬的。
+
+        ## 目录
+
+        - `产物/00-目录.md` —— 资料清单，**先读它**了解用户有什么
+        - `产物/` 下其余文件 —— 证道生成的整理结果，按需读取
+        - `/workspace` 根 —— 你自己的产出写这里（**唯一允许你写的地方**）
+
+        ## 铁律
+
+        1. ⛔ **不要写 `产物/`**：它由 App 统一维护；同时可能有别的程序在写它，
+           你一插进去就会互相覆盖，最后变成空文件。
+        2. ⛔ **不要写 `投递/`**：那是用户投递原件的入口，归 App 扫。
+        3. ✅ **你的产出（含帮用户改的文件）一律写进 `/workspace` 根**，
+           命名 `<原名>（改）.<扩展名>`，并在回复里说明"原件没动，改好的在工作区"。
+
+        ## 怎么帮用户
+
+        - 先读 `产物/00-目录.md` 看资料库里有什么；需要细节时告诉用户"原件在 App 里收着，
+          我按清单回答"，**不要假装读过原文件**。
+        - 发现某个文件还没被整理过 → **在回复里告诉用户**即可，由 App 去处理；**你自己不要写索引**。
+        - 格式提示：⚠️ **App 不再预先抽取正文**（摘要功能已于 2026-10-10 移除，E-080）。
+          需要 `.docx` 全文时**自己解压取正文**（`.docx` 本质是个 zip）；
+          ⚠️ 这个环境**没装 `unzip`（也没 `7z`）**：`busybox unzip -p 文件.docx word/document.xml` 最省事；
+          要纯文本就在 `python3` 里 `import zipfile` 读 `word/document.xml`，再把 XML 标签去掉。
+          真正的旧版 `.doc` 与 `.pdf` App **不解析** —— 读不了时用工具转成文本，**转出的副本放 `/workspace`**。
+    """.trimIndent()
+
+    /**
+     * 分发到 guest `/root/AGENTS.md` —— 终端 agent 的**开箱说明**。
+     * 含：环境说明（治"以为自己在电脑里"）＋ 资料库指路。
+     */
+    private fun dispatchAgentsText(ctx: Context): String {
+        val ws = ZhengdaoDirs.hostDir(ctx).absolutePath
+        val shared = ZhengdaoDirs.isShared(ctx)
+        val wsNote = if (shared) "手机文件管理器直接可见、可自由删除；卸载证道后仍保留"
+        else "应用专属目录，随应用卸载自动删除"
+        // 仅私有档**不 bind /sdcard**（B-补-1 修正之后 [ZhengdaoDirs.isShared] 才真的会判成 false）⇒
+        // 文件地图里的共享盘指路必须跟着改，否则 agent 会照着一句到不了的路径满世界撞墙
+        // （E-094 附带修正：改的是本函数里两处与模式相关的句子，其余文案一字未动）。
+        val sdcardLine = if (shared) {
+            "- /sdcard —— 共享存储整体可读可写，用于查找资料；**产出约定只进 /workspace**"
+        } else {
+            "- /sdcard —— **本档没有挂载共享存储**（仅私有）：手机相册 / 下载那类目录在 guest 里看不到，别去找"
+        }
+        val findLine = if (shared) {
+            "找不到用户文件时：先 ls /workspace 和 /sdcard/Download，把已搜索的路径列出来再下结论，不要直接放弃"
+        } else {
+            "找不到用户文件时：先 ls /workspace，把已搜索的路径列出来再下结论，不要直接放弃"
+        }
+        val kb = doneDir(ctx).absolutePath
+        val hasList = indexFile(ctx).isFile
+        return """
+            # 证道运行环境说明（每次对话开始前必读）
+
+            $MARK
+            ## 你的身份
+            你运行在用户的安卓手机上——一个由证道 App 通过 proot 运行的 Debian 环境。
+            禁止声称「我不在手机上」「我没有文件系统」；你就在手机里，文件就在下面这些路径。
+
+            ## 文件地图
+            - /workspace —— **产出与边界区**（手机侧：$ws；$wsNote）
+            $sdcardLine
+            - /root —— 你的 home；各 Agent 配置在此（~/.hermes、~/.claude 等）
+
+            ## 用户的资料${if (hasList) "（清单已就绪）" else "（清单还没生成）"}
+            路径：`$kb`（guest 内 `/workspace/产物/`）
+            - `产物/00-目录.md` —— 资料清单，**先读它**了解用户有什么
+            - `产物/` 只读：**不要写它**（App 统一维护，互相覆盖会变成空文件）
+            - 帮用户改文件时，改好的写 `/workspace` 根，命名 `<原名>（改）.<扩展名>`
+            用户的**原件在 App 私有区，你读不到** —— 按清单回答，别假装读过原文件。
+            详细规则见 `/workspace/产物/AGENTS.md`。
+
+            ## 能力边界
+            - 无 root，不要尝试需要 root 的操作
+            - 禁止执行 apt upgrade；装依赖用 pip / npm
+            - $findLine
+        """.trimIndent()
+    }
+}

@@ -1,0 +1,35 @@
+[package]
+name = "zhengdao_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# rlib：PC 上 cargo test 直接跑纯逻辑层；cdylib：产出 libzhengdao_core.so 供 App loadLibrary。
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# —— sha256 模块（原 rust/sha256poc）——
+sha2 = "0.10"
+hex = "0.4"
+# —— extract 模块（原 rust/extract）——
+# zstd 解压（绑定 C 实现——评估文档裁定：纯 Java zstd 是安装流水线的真实 CPU 热点）
+zstd = "0.13"
+# tar 归档遍历（纯 Rust）。
+# ⚠️ 关掉默认 feature（= xattr）：我们只用核心 tar API（Directory/Symlink/Link/Fifo/普通文件），
+# 从不读写 pax 扩展属性，而 xattr → rustix 的 build.rs 会在 Windows 宿主上给子进程开
+# stdin 管道做编译器探测，该管道在本机被系统拒绝（os error 231）⇒ 直接卡死交叉编译。
+# 去掉它既**少一个依赖**又让 .so 能在本机重建。2026-10-09 Rust 化审计发现。
+tar = { version = "0.4", default-features = false }
+flate2 = "1.0"
+# —— ed25519 模块（信任根：manifest / 环境包索引验签）——
+# 通用大整数库（**不是**密码学库）：与 Kotlin 侧 java.math.BigInteger 同构，
+# 让 RFC 8032 的公式能逐行对照移植，避免手写 255 位域运算的静默错误（E-051）
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# asm feature：启用 ARMv8 SHA2 硬件指令（aarch64 上与平台 MessageDigest 同吃硬件加速，
+# 计时对比才公平——2026-10-07 首轮计时 27ms vs 5ms 即因漏开此 feature，结论已修正）
+sha2 = { version = "0.10", features = ["asm"] }
+# JNI 薄层仅在 Android 目标编译（PC 上的 cargo test 只跑纯逻辑层）
+jni = { version = "0.21", default-features = false }

@@ -23,8 +23,8 @@ android {
         minSdk = 36
         targetSdk = 36
         // 新仓从 0.1.0 起，**不跟主仓 2.2.x 混**（两个 App 的版本号各走各的）。
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
 
         // README 写的是「只提供 arm64 单架构包」，这条与实物一致：交付 APK 里 8 个 .so
         // 全在 lib/arm64-v8a/ 一个目录下（2026-10-28 把 zip 逐项读出来的）。第四刀搬进来的
