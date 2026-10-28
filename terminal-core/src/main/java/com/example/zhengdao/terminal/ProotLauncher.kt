@@ -20,13 +20,15 @@ import com.example.zhengdao.rootfs.RootfsInstaller
 object ProotLauncher {
 
     /**
-     * 默认 RootFS 下载地址：latest 发布永远指向最新一次构建的产物，
-     * 因此这条地址长期有效。M3 起改为由 ed25519 验签的 manifest 动态下发。
+     * 默认 RootFS 下载地址。`latest` 是滚动 Release，指向**最后一次发布**的产物；
+     * 这条地址能不能长期有效，取决于 rootfs 的发布链还在不在跑（见下）。
      *
      * 地址里的 `zhengdao`（证道主仓）与 [com.example.zhengdao.rootfs.RootfsIndexFetcher.URL] 是同一口径：
-     * rootfs 的**发布端仍在主仓 CI**（重建 → 签名 → `gh release upload latest`），第四刀搬过来的是
-     * 消费端代码 ⇒ 这条**不是漏改的旧路径**。要改指本仓 Releases 属功能变更（发布链得一起搬），
-     * 第二百六十批只登记现状、未动 URL。
+     * 包是主仓 2026-10-23 挂上 `latest` 的，**至今仍可下载**（本批实测 200 MB 那件还在）⇒ 不是漏改的旧路径。
+     * ⚠️ 但发布端已于 2026-10-28 断开：主仓 `d698ea03` 让「要不要重建 RootFS」恒 `false`，`c331db18` 又删掉
+     * `build.yml` 里构建／签名／`gh release upload latest` 那 8 步；构建脚本 `rootfs/build-rootfs.sh` 现在只在
+     * 本仓，本仓 `ci.yml` 没有一步跑它 ⇒ 这是**存量包**，不会有更新。要改指本仓 Releases 属功能变更
+     * （发布链得先重建），第二百六十批只登记现状、未动 URL。
      */
     const val DEFAULT_ROOTFS_URL =
         "https://github.com/pisces19860207/zhengdao/releases/download/latest/debian-13.7-base-arm64.tar.zst"

@@ -105,3 +105,12 @@ git 历史留在主仓；`com.termux.**` 是上游）。两边关系：
    已经就位的是 **16KB 页对齐**那一条，但它不是脚本 —— 判据内嵌在
    `.github/workflows/ci.yml` 的「入库 .so 门禁」步骤里，对会被 `loadLibrary` 的库硬判
    `PT_LOAD.p_align >= 0x4000`（与主仓脚本的判据 1 同一条，只是各写各的）。
+
+4. **环境包的发布链现在是断的**（2026-10-28 实测，第二百六十批登记）：主仓 `d698ea03`（08:31）把「本次要不要
+   重建 RootFS」改成恒 `false`，`c331db18`（09:34）又删掉主仓 `build.yml` 里构建 → Ed25519 签名 →
+   `gh release upload latest` 那 8 个步骤；构建脚本本仓接手了（`rootfs/build-rootfs.sh`），但**没有任何
+   workflow 跑它**（`.github/workflows/ci.yml` 只有编译／单测／两道门禁），签发脚本 `tools/sign-rootfs-index.py`
+   **两仓都查无此件**（两边 `git ls-files` 各 0 命中）。⇒ 主仓 `latest`（= `v2.2.1`，2026-10-23 发布）上的
+   rootfs 与 `rootfs-index.json` 是**存量资产**：新装能装上，但环境包与索引从此不会有更新。
+   **待补**：要么在本仓落一条 rootfs 发布流水线（构建 → 生成索引 → 签发 → 上传），要么明确决定不再更新环境包 ——
+   在两者落地前，别把「App 能装环境」当成「更新链还在」。

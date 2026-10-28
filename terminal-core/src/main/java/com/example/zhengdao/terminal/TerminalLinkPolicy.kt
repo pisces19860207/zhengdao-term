@@ -13,7 +13,8 @@ package com.example.zhengdao.terminal
  * 立场：终端输出**不可信**——任何程序都能打印伪装链接，这与"用户在地址栏主动输入"
  * 有本质区别。故：
  * - http/https → **host 不在信任簿 ⇒ CONFIRM**（弹框显示完整目标 URL，防"显示 A 跳 B"
- *   钓鱼）；host 在信任簿 ⇒ 直接 App 内玄览打开；
+ *   钓鱼）；host 在信任簿 ⇒ 直接在 App 内打开（第四刀 2026-10-27 起，本仓没有内置浏览器，
+ *   实际实现是把 URL 交给系统浏览器，见 TerminalActivity.openInBrowser）；
  * - mailto:/tel: 等有明确接收者的 → 交系统处理；
  * - intent:// / file:// / content:// / 自定义 scheme → **默认拒绝**（终端内容任意跳转的最大面）。
  *
@@ -33,7 +34,7 @@ package com.example.zhengdao.terminal
 object TerminalLinkPolicy {
 
     enum class Verdict {
-        /** App 内玄览打开（信任簿内的 http/https）。 */
+        /** 在 App 内打开（信任簿内的 http/https）。第四刀起本仓无内置浏览器，实现＝交系统浏览器。 */
         OPEN_IN_APP,
         /** 交系统处理（mailto/tel 等）。 */
         OPEN_SYSTEM,
