@@ -8,13 +8,14 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * 用户等安装时看不到任何长阶段的进展——原来的文案是「正在解压（没有详细进度，约 30 秒
  * 到几分钟）」，一整段静默。Rust 核心**本来就在回调** `CoreNative.onProgress`（每 200
- * 条目一次，JNI 静态方法），只是此前只 `Log.i` 了一下；Java 回退的逐条目回调
- * （[RootfsInstaller.extractArchiveJava] 的 onEntry）同样现成。本对象把这两路计数收成
- * 一份，节流后交给 [onTick]（由 `InstallFlow` 接到 Compose 状态行 + 通知栏）。
+ * 条目一次，JNI 静态方法），只是此前只 `Log.i` 了一下。本对象把这路计数收成一份，
+ * 节流后交给 [onTick]（由 `InstallFlow` 接到 Compose 状态行 + 通知栏）。
+ * （T1，2026-10-28 之后生产只有 Rust 这一条解包路；[noteEntry] 服务的是留在仓里当
+ * 对拍基准的 [RootfsInstaller.extractArchiveJava]。）
  *
  * 口径（派工单：阶段名 + 已解条目数 + 已用秒；**拿不到字节偏移就绝不编百分比**）：
  * - 阶段名固定为「解包系统层」；
- * - 条目数取 Rust 回调的累计值 / Java 回退的本地计数；
+ * - 条目数取 Rust 回调的累计值（对拍基准那条 Java 路径是 [noteEntry] 的本地计数）；
  * - 已用秒从 [start] 起算，向上取整到秒。
  *
  * 线程模型：Rust 回调来自解包线程；[onTick] 也在该线程执行（实现方负责切主线程或
@@ -76,8 +77,11 @@ object InstallPulse {
     }
 
     /**
-     * 换一条解包通道时清零（Rust 失败 → Java 回退）：两边的条目计数不是同一口径，
-     * 直接把 Rust 试错时的累计值继续往上加会显示一个虚高的数字。
+     * 清零并重开计时（不清 [running]）。
+     *
+     * T1（2026-10-28）之前它服务于「Rust 失败 → Java 回退」的换道：两边的条目计数不是同一
+     * 口径（Rust 是累计值、Java 是本地计数），接着往上加会显示一个虚高的数字。生产已不再换道
+     * ⇒ 现在没有调用方；留着是给对拍基准（[RootfsInstaller.extractArchiveJava]）与单测重跑用。
      */
     fun reset() {
         entries.set(0L)
@@ -100,7 +104,7 @@ object InstallPulse {
         emitIfDue()
     }
 
-    /** Java 回退的逐条目回调。 */
+    /** 逐条目回调（对拍基准那条 Java 解包路径用；生产走 [fromRust]）。 */
     fun noteEntry(name: String) {
         if (!running) return
         entries.incrementAndGet()

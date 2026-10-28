@@ -182,7 +182,8 @@ object RootfsDelta {
         try {
             cloneTree(rootfsDir, tmpDir)
 
-            // ── 3. 解补丁（跳过元数据成员；Rust 优先，失败回退 Java —— 与全量装同一条路径） ──
+            // ── 3. 解补丁（跳过元数据成员；与全量装同一条路径 ⇒ T1 之后同样只走 Rust，
+            //        Rust 不可用/失败即明确失败，不回退 Java 慢路径） ──
             RootfsInstaller.extractArchive(
                 archive = patchFile,
                 destDir = tmpDir,
