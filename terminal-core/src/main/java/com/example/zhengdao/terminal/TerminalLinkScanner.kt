@@ -12,7 +12,8 @@ package com.example.zhengdao.terminal
  * 分工（2026-10-14 第 ② 刀合刀落地）：**OSC 8 标准超链接**（A 路径）由 `TerminalEmulator`
  * 解析、行区间登记、渲染下划线，手势层命中后直接给 URI；本类负责 **B 路径**——终端输出
  * 里的裸 URL 文本（`git clone https://…`、apt 源、curl 示例），tap 时由 TerminalActivity
- * 扫所在行命中。两条路共用同一套打开策略（TerminalLinkPolicy → 玄览）。
+ * 扫所在行命中。两条路共用同一套打开策略（[TerminalLinkPolicy]）；本仓无内置浏览器，
+ * `OPEN_IN_APP` 的实际落点是系统浏览器，见 `TerminalActivity.openInBrowser`。
  *
  * 已知风险（③ 待实测）：代码里的 URL 字符串/路径可能被误判；尾部标点误吞；
  * 组合字符下列→字符索引映射精度。真机读数归蓝总管采。

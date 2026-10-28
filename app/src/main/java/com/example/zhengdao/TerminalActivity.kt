@@ -1227,9 +1227,9 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     /**
      * OSC 8 链接 / B 路径 URL 的统一打开策略（证道 2026-10-14，§B-12）。
      *
-     * 落点（派工单）：解析结果走 TerminalLinkPolicy，**打开交玄览的 B 路径**——
-     * App 内打开不新开 Activity：写 BrowserHolder.pendingUrl + 请求主页切 Tab + finish()
-     * 回主页，由 MainActivity ON_RESUME 消费切 Tab 请求落到玄览。
+     * 落点：解析结果走 [TerminalLinkPolicy]，`OPEN_IN_APP` ⇒ [openInBrowser]、`OPEN_SYSTEM` ⇒ `ACTION_VIEW`。
+     * 原形态（证道 2026-10-14，§B-12）是「打开交玄览的 B 路径」——写 `BrowserHolder.pendingUrl` ＋ 请求主页
+     * 切 Tab ＋ `finish()` 回主页；第四刀（2026-10-27）后本仓没有内置浏览器，这条路径落到**系统浏览器**。
      */
     override fun onLinkOpen(uri: String): Boolean {
         return when (TerminalLinkPolicy.classify(uri, trustedLinkHosts)) {
@@ -1554,13 +1554,13 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     }
 
     /**
-     * 选中文字 → **直接落玄览**（用户 2026-10-18：「长按更多里面的搜索是不是可以直接跳转到
-     * 玄览了啊？不用外部浏览器了」）。
+     * 选中文字 → 直接落搜索（用户 2026-10-18 的原话是「长按更多里面的搜索是不是可以直接跳转到
+     * 玄览了啊？不用外部浏览器了」——那是主仓时期的落点，本仓没有内置浏览器，见下）。
      *
      * 历史：2026-10-11 曾改为交给系统默认搜索（ACTION_WEB_SEARCH）—— 那是当时的口径，已被本次覆盖。
-     * 现在与 OSC 8 链接走**同一条 B 路径**：写 BrowserHolder.pendingUrl ＋ 请求切 Tab ＋ finish() 回主页，
-     * 由 MainActivity ON_RESUME 消费请求落到玄览，全程不离开 App。
-     * 引擎仍用 bing（与玄览主页一致），查询串做 URL 编码。
+     * 现在与 OSC 8 链接走同一条路：`ACTION_VIEW` 把搜索 URL 交给**系统浏览器**（本仓无内置浏览器，
+     * 「全程不离开 App」那句是搬仓前的形态，第四刀起不再成立）。
+     * 引擎仍用 bing，查询串做 URL 编码。
      */
     private fun openWebSearch(query: String) {
         val url = "https://www.bing.com/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
