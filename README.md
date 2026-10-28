@@ -2,8 +2,7 @@
 
 从 [证道](https://github.com/pisces19860207/zhengdao) 拆出的**独立终端 App**：真 PTY、Debian 13.7 rootfs、PRoot 免 root。证道本体只保留认知型 harness（抱朴）与浏览器（玄览）；要 shell 的时候，用这个。
 
-> **当前状态**：迁移已完成（2026-10-27 第四刀）——终端内核（PTY / rootfs / proot）与终端页都在本仓，
-> 主仓那边已删。首个可安装版本以 [Releases](https://github.com/pisces19860207/zhengdao-term/releases) 为准（还没发就是还没有）。
+> **当前状态**：迁移已完成（2026-10-28）——终端内核（PTY / rootfs / proot）、终端页，以及共享的 `:core` / `:native-core` 源码都已随本仓；不再引用主仓的 AAR、URL 或 CI。首个可安装版本见 [Releases](https://github.com/pisces19860207/zhengdao-term/releases)。
 
 ## 它是什么
 

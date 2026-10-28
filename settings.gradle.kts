@@ -33,3 +33,6 @@ rootProject.name = "zhengdao-term"
 include(":app")
 // 终端内核（第四刀从主仓整模块搬入；主仓已删）
 include(":terminal-core")
+// 共享层已整模块搬入本仓（2026-10-28，彻底断开主仓）
+include(":core")
+include(":native-core")
