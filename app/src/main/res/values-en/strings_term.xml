@@ -64,6 +64,75 @@
         <item quantity="one">Pasting %1$d characters…</item>
         <item quantity="other">Pasting %1$d characters…</item>
     </plurals>
+    <!-- Settings page (batch 266: terminal 2 · settings). Text lives here only. -->
+    <string name="term_settings_entry">Settings</string>
+    <string name="term_settings_title">Settings</string>
+    <string name="term_settings_back">Back</string>
+
+    <string name="term_settings_section_font">Text size and line height</string>
+    <string name="term_settings_font_size">Text size</string>
+    <string name="term_settings_font_size_value">%1$s</string>
+    <string name="term_settings_line_height">Line height</string>
+    <string name="term_settings_line_height_comfortable">Comfortable</string>
+    <string name="term_settings_line_height_compact">Compact</string>
+    <string name="term_settings_font_hint">Takes effect when you return to the terminal (reopen it; no app restart needed).</string>
+
+    <string name="term_settings_section_env">Reinstall / repair environment</string>
+    <string name="term_settings_env_version">Version</string>
+    <string name="term_settings_env_fingerprint">Environment fingerprint</string>
+    <string name="term_settings_env_installed_at">Installed at</string>
+    <string name="term_settings_env_size">Disk usage</string>
+    <string name="term_settings_env_archive">Local package</string>
+    <string name="term_settings_env_not_installed">Environment not installed</string>
+    <string name="term_settings_env_unrecorded">Not recorded</string>
+    <string name="term_settings_env_archive_value">%1$s (no network)</string>
+    <string name="term_settings_env_archive_missing">No local package</string>
+    <string name="term_settings_env_refresh">Refresh</string>
+    <string name="term_settings_env_hint">Reinstalling replaces the system layer (rootfs) only; files and settings in home are kept.</string>
+    <string name="term_settings_reinstall">Reinstall / repair environment</string>
+    <string name="term_settings_reinstall_title">Reinstall the environment?</string>
+    <string name="term_settings_reinstall_message">The system layer will be extracted again from the local package (%1$s), taking a few minutes. Your data in home is not affected.</string>
+    <string name="term_settings_reinstall_confirm">Reinstall</string>
+    <string name="term_settings_reinstall_no_archive_title">No local package</string>
+    <string name="term_settings_reinstall_no_archive_message">Reinstalling needs a local package, and the cache has none. Open the terminal page to run the first-install / download flow.</string>
+    <string name="term_settings_reinstall_go_terminal">Open terminal to install</string>
+    <string name="term_settings_reinstall_running">Reinstalling the environment…</string>
+    <string name="term_settings_reinstall_done">Environment reinstalled</string>
+    <string name="term_settings_reinstall_fail">Reinstall failed</string>
+    <string name="term_settings_reinstall_error">Reinstall failed: %1$s</string>
+    <string name="term_settings_reinstall_busy">An install or update is already running; try again after it finishes</string>
+
+    <string name="term_settings_section_cache">Clear cache</string>
+    <string name="term_settings_cache_desc">Clears download caches and leftovers only; the installed environment is untouched.</string>
+    <string name="term_settings_cache_cleanable">Reclaimable</string>
+    <string name="term_settings_cache_none">Nothing to clear</string>
+    <string name="term_settings_cache_clean">Clear cache</string>
+    <string name="term_settings_cache_cleaning">Clearing…</string>
+    <string name="term_settings_cache_freed">Freed %1$s</string>
+    <string name="term_settings_cache_error">Cleanup failed: %1$s</string>
+
+    <string name="term_settings_section_mirror">Mirrors and sources</string>
+    <string name="term_settings_mirror_apt">apt mirror</string>
+    <string name="term_settings_mirror_pip">pip source</string>
+    <string name="term_settings_mirror_current">Current</string>
+    <string name="term_settings_mirror_override">Override: injected as environment variables for newly opened terminals; files inside the environment are not changed.</string>
+    <string name="term_settings_mirror_apt_label">apt mirror override</string>
+    <string name="term_settings_mirror_pip_label">pip source override</string>
+    <string name="term_settings_mirror_apt_hint">Empty = no override. Unavailable until the environment is installed.</string>
+    <string name="term_settings_mirror_save">Save override</string>
+    <string name="term_settings_mirror_reset">Clear override</string>
+    <string name="term_settings_mirror_saved">Override saved (applies to newly opened terminals)</string>
+    <string name="term_settings_mirror_cleared">Override cleared</string>
+    <string name="term_settings_mirror_error">Save failed: %1$s</string>
+
+    <string name="term_settings_section_about">About</string>
+    <string name="term_settings_about_version">Version</string>
+    <string name="term_settings_about_app_id">Application ID</string>
+    <string name="term_settings_about_license">Third-party licenses</string>
+    <string name="term_settings_about_license_open">View bundled licenses</string>
+    <string name="term_settings_license_title">Third-party licenses</string>
+    <string name="term_settings_license_missing">The bundled license copy can\'t be read</string>
+
     <string name="err_connect_fail">Couldn\'t reach the server (check the network)</string>
     <string name="err_disk_full">Not enough storage space</string>
     <string name="err_file_exists">A file with the same name already exists at the destination</string>

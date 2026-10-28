@@ -60,6 +60,75 @@
     <plurals name="term_pasting">
         <item quantity="other">正在粘贴 %1$d 个字符…</item>
     </plurals>
+    <!-- 设置页（第二百六十六批：终端 2 · 补设置页）。文案只此一处，界面不写字面量。 -->
+    <string name="term_settings_entry">设置</string>
+    <string name="term_settings_title">设置</string>
+    <string name="term_settings_back">返回</string>
+
+    <string name="term_settings_section_font">字体大小与行高</string>
+    <string name="term_settings_font_size">字号</string>
+    <string name="term_settings_font_size_value">%1$s</string>
+    <string name="term_settings_line_height">行高</string>
+    <string name="term_settings_line_height_comfortable">舒适</string>
+    <string name="term_settings_line_height_compact">紧凑</string>
+    <string name="term_settings_font_hint">改完回到终端页即生效（重新打开终端，不用重启 App）。</string>
+
+    <string name="term_settings_section_env">重装 / 修复环境</string>
+    <string name="term_settings_env_version">版本</string>
+    <string name="term_settings_env_fingerprint">环境指纹</string>
+    <string name="term_settings_env_installed_at">安装时间</string>
+    <string name="term_settings_env_size">占用</string>
+    <string name="term_settings_env_archive">本地安装包</string>
+    <string name="term_settings_env_not_installed">未安装环境</string>
+    <string name="term_settings_env_unrecorded">无记录</string>
+    <string name="term_settings_env_archive_value">%1$s（不联网）</string>
+    <string name="term_settings_env_archive_missing">没有本地安装包</string>
+    <string name="term_settings_env_refresh">刷新</string>
+    <string name="term_settings_env_hint">重装只换系统层（rootfs），home 里的文件与配置保留。</string>
+    <string name="term_settings_reinstall">重装 / 修复环境</string>
+    <string name="term_settings_reinstall_title">重装环境？</string>
+    <string name="term_settings_reinstall_message">将用本地安装包（%1$s）重新解压系统层，约几分钟；home 里的用户数据不受影响。</string>
+    <string name="term_settings_reinstall_confirm">确认重装</string>
+    <string name="term_settings_reinstall_no_archive_title">没有本地安装包</string>
+    <string name="term_settings_reinstall_no_archive_message">重装要用本地安装包，现在缓存里没有。请到终端页走首次安装 / 下载流程。</string>
+    <string name="term_settings_reinstall_go_terminal">去终端页安装</string>
+    <string name="term_settings_reinstall_running">正在重装环境…</string>
+    <string name="term_settings_reinstall_done">环境已重装</string>
+    <string name="term_settings_reinstall_fail">重装失败</string>
+    <string name="term_settings_reinstall_error">重装失败：%1$s</string>
+    <string name="term_settings_reinstall_busy">已有安装 / 更新任务在跑，等它结束再试</string>
+
+    <string name="term_settings_section_cache">清缓存</string>
+    <string name="term_settings_cache_desc">只清下载缓存与残件，不动已安装的系统环境。</string>
+    <string name="term_settings_cache_cleanable">可释放</string>
+    <string name="term_settings_cache_none">没有可清理的缓存</string>
+    <string name="term_settings_cache_clean">清缓存</string>
+    <string name="term_settings_cache_cleaning">正在清理…</string>
+    <string name="term_settings_cache_freed">已释放 %1$s</string>
+    <string name="term_settings_cache_error">清理失败：%1$s</string>
+
+    <string name="term_settings_section_mirror">镜像与源</string>
+    <string name="term_settings_mirror_apt">apt 镜像</string>
+    <string name="term_settings_mirror_pip">pip 源</string>
+    <string name="term_settings_mirror_current">当前</string>
+    <string name="term_settings_mirror_override">覆盖：以环境变量注入，只对之后新开的终端生效；不改环境里的文件。</string>
+    <string name="term_settings_mirror_apt_label">apt 镜像覆盖</string>
+    <string name="term_settings_mirror_pip_label">pip 源覆盖</string>
+    <string name="term_settings_mirror_apt_hint">留空 = 不覆盖。环境未安装时不可改。</string>
+    <string name="term_settings_mirror_save">保存覆盖</string>
+    <string name="term_settings_mirror_reset">清除覆盖</string>
+    <string name="term_settings_mirror_saved">覆盖已保存（新开的终端生效）</string>
+    <string name="term_settings_mirror_cleared">覆盖已清除</string>
+    <string name="term_settings_mirror_error">保存失败：%1$s</string>
+
+    <string name="term_settings_section_about">关于</string>
+    <string name="term_settings_about_version">版本</string>
+    <string name="term_settings_about_app_id">应用 ID</string>
+    <string name="term_settings_about_license">第三方许可证</string>
+    <string name="term_settings_about_license_open">查看随包许可证</string>
+    <string name="term_settings_license_title">第三方许可证</string>
+    <string name="term_settings_license_missing">随包许可证副本读不到</string>
+
     <string name="err_connect_fail">连不上服务器（请检查网络）</string>
     <string name="err_disk_full">存储空间不足</string>
     <string name="err_file_exists">目标位置已存在同名文件</string>

@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
@@ -20,10 +21,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,9 @@ import com.example.zhengdao.rootfs.RootfsMarker
  *
  * 为什么不做"一键自动装"：装环境要下载约 200 MB，中途会弹系统对话框、要选本地包、要显示进度，
  * 那套交互在终端页里已经存在且被真机验证过；入口页再造一份只会分叉。
+ *
+ * 第二百六十六批（终端 2）另加一个「设置」入口：设置页是**同一个 Activity 里的一屏**
+ * （`TermSettingsScreen`），不是第二个 Activity、更没有 LAUNCHER ⇒ 桌面仍然只有一个图标。
  */
 class MainActivity : ComponentActivity() {
 
@@ -61,11 +67,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TermTheme {
+                var showSettings by remember { mutableStateOf(false) }
+                // 返回键先给设置页（它是同一 Activity 里的一屏），再谈退出。
+                if (showSettings) BackHandler { showSettings = false }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    EntryScreen(
-                        onGrant = ::openAllFilesAccessSettings,
-                        onOpenTerminal = { startActivity(Intent(this, TerminalActivity::class.java)) },
-                    )
+                    if (showSettings) {
+                        TermSettingsScreen(onBack = { showSettings = false })
+                    } else {
+                        EntryScreen(
+                            onGrant = ::openAllFilesAccessSettings,
+                            onOpenTerminal = { startActivity(Intent(this, TerminalActivity::class.java)) },
+                            onOpenSettings = { showSettings = true },
+                        )
+                    }
                 }
             }
         }
@@ -89,10 +103,16 @@ class MainActivity : ComponentActivity() {
  * 页面要立刻反映"这一步已经过了"，而不是要杀进程重进。
  */
 @Composable
-private fun EntryScreen(onGrant: () -> Unit, onOpenTerminal: () -> Unit) {
+private fun EntryScreen(
+    onGrant: () -> Unit,
+    onOpenTerminal: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var granted by mutableStateOf(EnvironmentScope.hasAllFilesAccess(context))
-    var installed by mutableStateOf(RootfsMarker.installedEnv(context) != null)
+    // remember 是必须的（lint: UnrememberedMutableState）：没有它，每次重组都会新建状态、
+    // 把 ON_RESUME 里刷出来的授权结果冲掉。
+    var granted by remember { mutableStateOf(EnvironmentScope.hasAllFilesAccess(context)) }
+    var installed by remember { mutableStateOf(RootfsMarker.installedEnv(context) != null) }
 
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -177,6 +197,15 @@ private fun EntryScreen(onGrant: () -> Unit, onOpenTerminal: () -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 6.dp),
         )
+        TextButton(
+            onClick = onOpenSettings,
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.term_settings_entry),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
 }
 
