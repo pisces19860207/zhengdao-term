@@ -23,8 +23,8 @@ android {
         minSdk = 36
         targetSdk = 36
         // 新仓从 0.1.0 起，**不跟主仓 2.2.x 混**（两个 App 的版本号各走各的）。
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
 
         // README 写的是「只提供 arm64 单架构包」，这条与实物一致：交付 APK 里 8 个 .so
         // 全在 lib/arm64-v8a/ 一个目录下（2026-10-28 把 zip 逐项读出来的）。第四刀搬进来的
@@ -60,6 +60,18 @@ android {
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+
+    // proot 要 execve nativeLibraryDir 里的 libproot.so / libproot-loader.so，并把
+    // libtalloc.so 从那儿复制改名 —— 这两件事的前提是「安装时系统真把 jniLibs 解压出来」。
+    // AGP 默认 useLegacyPackaging=false（manifest 落 extractNativeLibs="false"），.so 只留在
+    // APK 里给 loadLibrary 用，nativeLibraryDir 是空目录 ⇒ 0.1.3 起 proot 在真机上起不来，
+    // 会话一直是「证道 - 系统 shell」。真机实测：打开这一项后 lib/arm64/ 出现 8 个带执行位的 .so，
+    // 启动决策 proot=true，终端进 Debian 13.7。
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
