@@ -1827,52 +1827,42 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                     }
                     cacheCopy
                 }
-                // 校验值以**索引**为准（索引 > 本地 .sha256 > 线上 .sha256 > 上次装过的那个包的 sha256；
-                // 见 RootfsCache.pickExpectedSha / E-053 / P3-6）：
-                // 本地边车是没人维护的遗留文件，远端一换包它必然过期，拿它当真会把"包是对的"误报成
-                // "安装失败：SHA256 校验失败"（2026-10-08 用户真机报的就是这个）。
-                val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
+                // 校验值只认「签名索引 / 本地同名 .sha256 / 本机上次装成的那个包」三者
+                //（见 IndexTrust.gateForLocal）。267 起**不再**退到线上 $url.sha256 —— 那份与包同源，
+                // 能改包的人也能顺手改它，退过去等于把验签白做（这是 267 之前的真实后门）。
                 val sidecar = File(local.parentFile, local.name + ".sha256")
                 val sidecarText = if (sidecar.isFile) {
                     runCatching { sidecar.readText() }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
                 } else null
-                // 本地边车本身过期/缺失时才去抓线上那份（省一次网络往返）
-                val onlineSha = if (sidecarText == null) {
-                    RootfsDownloader.fetchText(ProotLauncher.DEFAULT_ROOTFS_URL + ".sha256")
-                } else null
-                val choice = com.example.zhengdao.rootfs.RootfsCache.pickExpectedSha(
+                val localGate = com.example.zhengdao.rootfs.IndexTrust.gateForLocal(
+                    result = RootfsIndexFetcher.fetch(),
                     localName = archive.name,
                     localSize = archive.length(),
-                    indexUrl = idx?.url,
-                    indexSize = idx?.size ?: 0L,
-                    indexSha = idx?.sha256,
                     sidecar = sidecarText,
-                    onlineSha = onlineSha,
-                    rememberedSha = rememberedArchiveSha(appContext),
+                    remembered = rememberedArchiveSha(appContext),
                 )
-                val expectedSha = choice.sha
-                if (choice.staleSidecar) {
-                    RunLog.log("本地 .sha256 伴生文件已过期（sidecar=$sidecarText 索引=$expectedSha），按索引校验")
+                if (localGate is com.example.zhengdao.rootfs.InstallGate.Deny) {
+                    // 直接给人话：走异常的话 HumanizeError 会把 IllegalStateException 兜成
+                    // "出错了（IllegalStateException）"，这段文案就白写了。
+                    installFailed("${localGate.title}：${localGate.hint}")
+                    return@Thread
                 }
-                if (expectedSha.isNullOrBlank()) {
-                    // ── P3-6（2026-10-10）：这里以前是「未找到校验文件，跳过完整性校验」然后照装 ──
-                    // 也就是：一个谁都能替换的本地包，只要拿不到任何校验值就被无条件解压进
-                    // App 私有目录（fail-open）。四个来源现在都试过了（签名索引 / 本地 .sha256 /
-                    // 线上 .sha256 / 本机上次装成的那个包），一个都没有 ⇒ 拒绝安装，并说清怎么办。
-                    throw IllegalStateException(
-                        "拿不到这个安装包的 SHA256 校验值（签名索引、本地 ${sidecar.name}、线上都试过），" +
-                            "为安全起见停止安装。请联网后重试「联网下载运行环境」；" +
-                            "若这个包是官方渠道拿到的，可以在它旁边放一份同名 .sha256 文件再装"
-                    )
-                } else {
-                    RootfsDownloader.verifySha256(archive, expectedSha)
-                    installStatus("SHA256 校验通过（来源：${choice.source}）")
-                    if (choice.staleSidecar) {
-                        // 自愈：把过期边车改写成索引值，别让同一个坑下次再踩（写失败不影响安装）
-                        runCatching { sidecar.writeText("$expectedSha\n") }
-                            .onSuccess { RunLog.log("已把 ${sidecar.name} 重写为索引校验值") }
-                            .onFailure { RunLog.log("重写 ${sidecar.name} 失败（忽略）：${it.message}") }
-                    }
+                val allow = localGate as com.example.zhengdao.rootfs.InstallGate.Allow
+                val idx = allow.index
+                val expectedSha = allow.sha256
+                allow.note?.let {
+                    RunLog.log("本地包安装：$it")
+                    installStatus(it)
+                }
+                RootfsDownloader.verifySha256(archive, expectedSha)
+                installStatus("SHA256 校验通过（来源：${allow.source}）")
+                if (allow.fromSignedIndex && sidecarText != null &&
+                    !sidecarText.equals(expectedSha, ignoreCase = true)
+                ) {
+                    // 自愈：把过期边车改写成索引值，别让同一个坑下次再踩（写失败不影响安装）
+                    runCatching { sidecar.writeText("$expectedSha\n") }
+                        .onSuccess { RunLog.log("已把 ${sidecar.name} 重写为索引校验值") }
+                        .onFailure { RunLog.log("重写 ${sidecar.name} 失败（忽略）：${it.message}") }
                 }
                 installStatus("开始解压（约需几分钟，请勿离开）")
                 // 首装也顺手记下 env（协议 §5）：本机装的是哪个"内容版本"，下次更新才可能走增量。
@@ -1907,26 +1897,22 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
             try {
                 installStatus("开始下载运行环境（断点续传）…")
                 val archive = com.example.zhengdao.rootfs.RootfsCache.archiveFor(appContext, url)
-                // 索引先拿：它与下面"下载时用的校验值"必须同源，否则同一条链上有两种强度（E-050 的老坑）。
-                // 索引是唯一被 Ed25519 签名背书的来源（E-052）；名字/字节数对得上就用它的 sha256，
-                // 否则退回线上 `$url.sha256`（并保留镜像兜底：主源不通时不能因为拿不到 sha 就白白重下 326MB）。
-                val idx = runCatching { RootfsIndexFetcher.fetch() }.getOrNull()
-                val onlineSha = RootfsDownloader.withMirrorFallback("$url.sha256")
-                    .firstNotNullOfOrNull { RootfsDownloader.fetchText(it) }
-                val expectedSha = com.example.zhengdao.rootfs.RootfsCache.pickExpectedSha(
-                    localName = archive.name,
-                    localSize = if (archive.isFile) archive.length() else -1L,
-                    indexUrl = idx?.url,
-                    indexSize = idx?.size ?: 0L,
-                    indexSha = idx?.sha256,
-                    sidecar = null,
-                    onlineSha = onlineSha,
-                    rememberedSha = rememberedArchiveSha(appContext),
-                ).sha
+                // 267：联网安装的唯一准入 = **验签通过**的索引（见 IndexTrust.gateForDownload）。
+                // 索引取不到 / 没签名 / 验签失败 / 内容损坏 ⇒ 一律拒绝，且**不再**退到线上
+                // $url.sha256：那份 sha256 与被校验的包同源，能改包的人也能顺手改它（等于没校验）。
+                val gate = com.example.zhengdao.rootfs.IndexTrust.gateForDownload(
+                    RootfsIndexFetcher.fetch(),
+                )
+                if (gate is com.example.zhengdao.rootfs.InstallGate.Deny) {
+                    // 直接给人话，不抛异常（HumanizeError 会把文案换成"出错了（…）"）
+                    installFailed("${gate.title}：${gate.hint}")
+                    return@Thread
+                }
+                val allow = gate as com.example.zhengdao.rootfs.InstallGate.Allow
+                val idx = allow.index
+                val expectedSha = allow.sha256
                 var needDownload = true
-                // 本次"实际校验通过的 SHA256"（信任锚要用它跟索引对账，见下面的 envForMarker）
-                var actualSha: String? = expectedSha
-                if (archive.isFile && !expectedSha.isNullOrBlank()) {
+                if (archive.isFile) {
                     runCatching {
                         RootfsDownloader.verifySha256(archive, expectedSha)
                         needDownload = false
@@ -1935,10 +1921,12 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                 }
                 if (needDownload) {
                     var lastPercent = -1L
-                    actualSha = RootfsDownloader.download(
+                    // shaUrls 传空：下载器不再自己从远端明文 .sha256 取校验值，
+                    // 校验统一在下行按**索引**的 sha256 做（单一信任源，少一条可被替换的旁路）。
+                    RootfsDownloader.download(
                         urls = RootfsDownloader.withMirrorFallback(url),
                         dest = archive,
-                        shaUrls = RootfsDownloader.withMirrorFallback("$url.sha256"),
+                        shaUrls = emptyList(),
                     ) { done, total ->
                         if (total > 0) {
                             val percent = downloadPercentBucket(done, total)
@@ -1950,23 +1938,18 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                                 )
                             }
                         }
-                    } ?: expectedSha
+                    }
+                    RootfsDownloader.verifySha256(archive, expectedSha)
+                    installStatus("SHA256 校验通过（来源：${allow.source}）")
                 } else {
                     installStatus("检测到已下载的完整安装包，跳过下载")
                 }
-                // 对账：下载时用的是"文件自带的 sha"，索引给的才是权威值。两者不一致就按索引再哈希一次
-                // （对不上直接抛，安装失败——fail-closed），一致则零成本（192MB 哈希约 1 秒，能省则省）。
-                if (!expectedSha.isNullOrBlank() && !expectedSha.equals(actualSha, ignoreCase = true)) {
-                    RootfsDownloader.verifySha256(archive, expectedSha)
-                    actualSha = expectedSha
-                }
                 installStatus("开始解压（约需几分钟，请勿离开）")
-                // 首装也顺手记下 env（协议 §5）：下次更新才可能走增量。索引取不到就作罢。
                 // 信任锚（用户 2026-10-08 规则）：只有索引 sha256 == 实际校验通过的 sha256 才写 env。
-                val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, actualSha)
+                val envToWrite = RootfsInstaller.envForMarker(idx?.env, idx?.sha256, expectedSha)
                 RootfsInstaller.ensureFreeSpace(appContext, archive.length())
                 // 同"本地包"路径：把实际装进去的那个包的 sha256 写进标记，供将来重装做"同源"推断。
-                RootfsInstaller.install(appContext, archive, envToWrite, actualSha) { }
+                RootfsInstaller.install(appContext, archive, envToWrite, expectedSha) { }
                 com.example.zhengdao.rootfs.RootfsCache.pruneKeep(appContext)
                 // 装完立刻置位：主页/欢迎页的环境状态不必等回到前台再刷新（v1.2）
                 com.example.zhengdao.ui.RootfsState.markInstalled()

@@ -32,7 +32,14 @@ object Ed25519Verify {
      */
     fun verify(pub: ByteArray, sig: ByteArray, msg: ByteArray, what: String): Boolean = try {
         val platform = Ed25519.verify(pub, sig, msg)
-        val rust = CoreNative.verifyEd25519(pub, sig, msg)
+        // 267：Rust 桥不可用时（JVM 单测里 so 未加载、真机 so 缺失）**必须**降级到平台实现，
+        // 不能让异常冒到最外层被 catch 成 false —— 那样每次验签都会判"签名不符"，
+        // 用户看到的是"索引被篡改"，实际只是核心没加载。异常一律折算成 null（= 核心不可用）。
+        val rust = runCatching { CoreNative.verifyEd25519(pub, sig, msg) }
+            .onFailure {
+                Log.i(TAG, "$what：Rust 核心不可用（${it.javaClass.simpleName}），改用平台实现")
+            }
+            .getOrNull()
         when {
             rust == null -> {
                 Log.i(TAG, "$what：验签走平台回退（Rust 核心不可用）：$platform")
