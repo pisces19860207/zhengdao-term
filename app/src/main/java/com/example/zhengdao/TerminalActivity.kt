@@ -76,6 +76,8 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
     private var stickyCtrl = false
     private var stickyShift = false
     private val installPromptShown = AtomicBoolean(false)
+    /** 自动安装每个进程最多触发一次（失败也不重试，避免"装→回退→再装"的循环）。 */
+    private val autoInstallTried = AtomicBoolean(false)
     private val installing = AtomicBoolean(false)
     /** 当前会话是否由 tmux 保持（绿点分屏按钮的前置条件） */
     private var usesTmux = false
@@ -1604,10 +1606,23 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         )
     }
 
-    /** 回退会话首次出现时：本地有归档 → 直接自动安装（零交互）；否则给下载入口。 */
+    /**
+     * 回退会话出现时：**环境确实没装**才自动安装 / 弹下载引导。
+     *
+     * 已装（标记文件在）却回退到系统 shell，说明坏的不是"没装包"（例如 proot 起不来），
+     * 重装一遍治不了它，只会变成「装完 → 回退 → 又装」的死循环：2026-10-29 真机实测
+     * 5 秒一轮、连装十余次，用户只看到「正在校验并解压」反复出现。所以标记在就直接返回；
+     * 自动安装再用 [autoInstallTried] 兜一层，本进程只试一次，失败也不重试。
+     */
     private fun promptInstallOnce() {
+        if (com.example.zhengdao.rootfs.RootfsMarker.read(File(filesDir, "rootfs")) != null) {
+            RunLog.log("环境标记在（已装），但会话回退到系统 shell：不自动重装 —— 重装治不了回退")
+            return
+        }
+        if (installing.get()) return
         val local = findLocalArchive()
         if (local != null) {
+            if (!autoInstallTried.compareAndSet(false, true)) return
             // 用户原话：「我以为要重新下载呢」。本地包这条路必须**明说不联网**——
             // 否则"提示只有 2 秒 + 终端里看不到进度"叠加起来，用户只能靠猜。
             val mb = local.length() / (1024 * 1024)
