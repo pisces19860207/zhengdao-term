@@ -1749,7 +1749,14 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
         return installing.compareAndSet(false, true)
     }
 
-    /** SAF 选中归档：拷入公共缓存 → 校验 → 解压 → 切 Debian。压缩包保留（重装免下载）。 */
+    /**
+     * SAF 选中归档：拷入公共缓存 → **直接解压** → 切 Debian（压缩包保留，重装免下载）。
+     *
+     * ⚠️ 这条路上**没有任何校验**：用户自选包没有可比对的校验值（见下面的传参注释），
+     * Rust 解包拿到 `expectedSha256 = null` 就只解包不对账。别把它和
+     * [startInstallFromFile] 混为一谈——后者走 `IndexTrust.gateForLocal` 并在校验那步
+     * `verifySha256`。要拦"改过一字节的包"，得走后者或联网安装那条路。
+     */
     private fun installFromSafUri(uri: android.net.Uri) {
         if (!claimInstallSlot()) return
         val appContext = applicationContext
@@ -1938,8 +1945,26 @@ class TerminalActivity : ComponentActivity(), com.termux.view.TerminalViewClient
                             }
                         }
                     }
-                    RootfsDownloader.verifySha256(archive, expectedSha)
-                    installStatus("SHA256 校验通过（来源：${allow.source}）")
+                    // T1 P1（2026-10-28，用户：「去掉下载后那遍全量 sha」）：Rust 可用时**不再**
+                    // 单独整包哈希一遍 —— `CoreNative.extract` 开解前就对整包做流式 sha256 并与
+                    // 索引值对账（不匹配抛 ShaMismatch，见 RootfsInstaller.extractArchive），
+                    // 信任锚因此落在「恰好被解压的那些字节」上，比另一次遍历更硬，也省掉
+                    // 191MB 的重复读盘。省的是多少：拿设备上那份 200,223,802B 的缓存包量过
+                    // （shell 侧 toybox `sha256sum` 整包一遍 0.23s real、`dd` 纯读盘一遍
+                    // 0.17s／1.1G/s）——量的是 shell 不是 App 自己那一遍，但量级摆在那儿：
+                    // 省掉的是零点几秒，安装的大头在解包与下载，不在这遍哈希。
+                    // 只有 Rust 不可用时才在这里补一遍（RootfsInstaller.needsPreExtractVerify
+                    // 钉住这条口径）；那种情况下解包本身也会明确失败（T1 P2 不静默回退），
+                    // 所以这一遍的作用是让失败发生在「校验」而不是「解包」，给用户的文案更准。
+                    if (RootfsInstaller.needsPreExtractVerify(
+                            com.example.zhengdao.rust.CoreNative.isRustAvailable(),
+                        )
+                    ) {
+                        RootfsDownloader.verifySha256(archive, expectedSha)
+                        installStatus("SHA256 校验通过（来源：${allow.source}）")
+                    } else {
+                        installStatus("下载完成，完整性随解包流式校验（来源：${allow.source}）")
+                    }
                 } else {
                     installStatus("检测到已下载的完整安装包，跳过下载")
                 }

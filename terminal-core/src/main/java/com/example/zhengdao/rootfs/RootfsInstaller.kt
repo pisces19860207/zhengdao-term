@@ -36,8 +36,13 @@ import com.example.zhengdao.core.PathGuard
  *   与 UV_LINK_MODE=copy、proot --link2symlink 同一因果）；
  * - 归档格式按魔数自动识别：zstd（主格式）、gzip（兼容格式），其余按纯 tar（增量补丁）。
  *
- * 增量更新（[RootfsDelta]）复用本对象的三块内核：[extractArchiveJava]（解包 + 类型处理）、
+ * 增量更新（[RootfsDelta]）复用本对象的三块内核：[extractArchive]（解包）、
  * [swapIntoPlace]（原子替换）、[openTar]（读补丁元数据），保证两条路径的落盘语义一致。
+ *
+ * ⚠️ T1（2026-10-28）起解包**只有 Rust 一条路**：Rust 不可用、或 Rust 流水线失败，
+ * 一律明确失败并留下 [FALLBACK_REFUSED] 标记，不再悄悄落回 [extractArchiveJava] 慢路径。
+ * 后者留在仓里的身份是**对拍基准**（核对 Rust 的落盘语义：类型处理/权限/防穿越/硬链接），
+ * 生产代码不再调用它。
  */
 object RootfsInstaller {
 
@@ -75,7 +80,41 @@ object RootfsInstaller {
      */
     private const val EMPTY_ARCHIVE_MARK = "归档不含任何条目"
 
+    /**
+     * T1（2026-10-28，用户原话：「原先 rust 解压超级快，回退了超级慢」）：
+     * **拒绝静默回退**的日志标记。
+     *
+     * 旧规矩（规范 #2）是「Rust 不可用/失败 ⇒ 悄悄落回 commons-compress 慢路径」，
+     * 用户端只看到"这次装得特别久"，一行解释都没有。现在改成明确失败：文案里说清
+     * "解包组件不可用/解包失败"，logcat 与 RunLog 各留一行带这个标记的证据
+     * （release 包里 RunLog 不镜像进 logcat，见 N-4 ⇒ 两处都写，排障才有得捞）。
+     */
+    const val FALLBACK_REFUSED = "FALLBACK_REFUSED"
+
     class InstallFailed(message: String) : IOException(message)
+
+    /**
+     * 「解包前该不该再自己整包哈希一遍」——纯函数，JVM 单测钉住（T1 P1）。
+     *
+     * Rust 可用 ⇒ **不该**：`CoreNative.extract` 的第一步就是对整包做流式 sha256，并与
+     * `expectedSha256` 对账（不匹配抛 `ShaMismatch`，见 `rust/core/src/extract.rs` 步骤 1）；
+     * 信任锚因此落在**恰好被解压的那些字节**上。调用方再哈希一遍＝同一份 191MB 多读一遍、
+     * 多算一遍，纯白花（设备实测：整包哈希一遍 0.23s、读盘一遍 0.17s，而解包阶段 ≈28s）。
+     *
+     * Rust 不可用 ⇒ **该**：那条路上没有第二道完整性关。⚠️ 但 T1 P2 之后 Rust 不可用的安装
+     * 会**直接失败**（见 [extractArchive]），所以这个 true 只可能出现在"解包之前就想单独
+     * 校验一次"的场景（缓存命中检查、修复前的核对），不再服务于安装主路。
+     */
+    fun needsPreExtractVerify(rustAvailable: Boolean): Boolean = !rustAvailable
+
+    /**
+     * 「拒绝回退」时给用户看的那句话（纯函数，JVM 单测钉住措辞）。
+     *
+     * [hint] 分开传是因为两种拒因的下一步动作不同：`.so` 没加载起来只能重装 App；
+     * 流水线中途失败（IO / 旧 .so 缺符号）重进一次往往就好了。
+     */
+    fun fallbackRefusedMessage(why: String, hint: String = "重进 App 可再试"): String =
+        "环境解包失败（$why）：已拒绝回退慢速 Java 解包路径，本次安装未生效（$hint）"
 
     // ── 进程级安装锁（#11 / E-078）───────────────────────────────────────────
     //
@@ -385,21 +424,21 @@ object RootfsInstaller {
             }
             trace.end()
 
-            // ── Rust 快路径（v2.0 R2 原型）：数据常驻 native，边界只跨一次 ──
-            // 回退纪律（规范 #2）：任何失败 → 落回 commons-compress Java 路径；
-            // 唯一例外是**完整性失败**（见 extractArchive），它必须硬失败。
+            // ── Rust 唯一路径（T1，2026-10-28）：数据常驻 native，边界只跨一次 ──
+            // 不再有"失败就落回 Java"这一档：Rust 不可用或流水线失败 ⇒ [extractArchive] 直接抛
+            // InstallFailed（同时留下 FALLBACK_REFUSED 证据），由下面的 catch 清掉半截 tmp 树再抛给用户。
             // 把"这份包应当是什么 sha256"交给 Rust 对账：信任锚落在**恰好被解压的那些字节**上，
             // 而不是另一次遍历的结果；没有独立期望值的路径（用户自选文件等）传 null = 只算不校验。
             trace.begin(InstallTrace.Stage.EXTRACT)
-            val usedRust = extractArchive(
+            extractArchive(
                 archive,
                 tmpDir,
                 expectedSha256 = archiveSha256,
                 trace = trace,
                 onEntry = onEntry,
             )
-            trace.extractionPath = if (usedRust) "Rust" else "Java"
-            trace.end(if (usedRust) "Rust，含整包对账" else "Java 回退")
+            trace.extractionPath = "Rust"
+            trace.end("Rust，含整包对账")
 
             // 完成标记（ProotLauncher 依据它判定环境可用；env 行是增量更新的基线）
             trace.begin(InstallTrace.Stage.MARKER)
@@ -431,11 +470,7 @@ object RootfsInstaller {
                 }
             }
             trace.log(true)
-            Log.i(
-                TAG,
-                if (usedRust) "RootFS 安装完成（Rust 路径）：${rootfsDir.path}"
-                else "RootFS 安装完成：${rootfsDir.path}",
-            )
+            Log.i(TAG, "RootFS 安装完成（Rust 路径）：${rootfsDir.path}")
         } catch (t: Throwable) {
             // ④ 失败路径必须清干净：半截 tmp 树既白占 1–2GB，又会被下次启动的 [cleanupPartial]
             //    多清一遍；更糟的是它看起来像"有环境"（rootfs.tmp 里是半个完整的树）。
@@ -448,16 +483,24 @@ object RootfsInstaller {
     }
 
     /**
-     * 解包归档（**Rust 优先，失败回退 Java**）——[install] 与 [RootfsDelta] 共用同一条路径。
+     * 解包归档——**Rust 唯一路径**（T1，2026-10-28）：[install] 与 [RootfsDelta] 共用这一条。
      *
      * 补丁包也走这里（带 [skipNames]），所以"全量走 Rust、补丁走 Java"的分叉到此为止（E-050）。
      *
+     * ## 为什么不再回退 Java（T1 P2，用户 2026-10-28：「原先 rust 解压超级快，回退了超级慢」）
+     * 旧行为是「Rust 不可用/失败 ⇒ 悄悄落回 [extractArchiveJava]」，代价有两条：
+     *  1. **慢得像卡死**：commons-compress 逐条目走 tar + zstd-jni，与 Rust 的流水线差一个数量级，
+     *     而用户端一行解释都没有（只有 logcat 里一条 `Log.w`，release 包她也看不到）；
+     *  2. **完整性跟着降级**：Java 路径**不校验 sha256**，"回退成功"＝把一次校验过的安装
+     *     悄悄换成一次没校验的安装。
+     * 现在这两种情况都抛 [InstallFailed]（文案由 [fallbackRefusedMessage] 给，日志带 [FALLBACK_REFUSED]）。
+     * 这不是"少一条兜底"，而是把兜底换成**看得见的一句人话**：慢路径装出来的环境用户不敢用，
+     * 明确失败他至少知道该重装 App 还是再来一次。
+     *
      * @param skipNames 需要跳过的成员名（去掉 `./` 前缀；补丁元数据 `.zhengdao-patch-info`）
-     * @param expectedSha256 非 null 时由 Rust 对账归档整体 sha；**不匹配不回退 Java**
-     *   —— 回退等于把校验降级成"没校验"（同一份坏包再解一遍），见 [install] 的注释
-     * @throws InstallFailed 可落盘条目为 0（Rust 报 `EmptyArchive`，或旧 .so 回了 0 条目）：
-     *   与 Java 路径的 `extracted == 0` 兜底对齐，**同样不回退**（BUG-1 / E-083）
-     * @return true = 走了 Rust，false = 回退到 Java 路径
+     * @param expectedSha256 非 null 时由 Rust 对账归档整体 sha（`extract.rs` 步骤 1 那一遍流式哈希）；
+     *   不匹配抛 [InstallFailed]，**不回退**——回退等于把校验降级成"没校验"
+     * @throws InstallFailed 四种情况，全都不回退：Rust 不可用 / 流水线失败 / 0 条目 / sha 不匹配
      */
     internal fun extractArchive(
         archive: File,
@@ -466,76 +509,100 @@ object RootfsInstaller {
         expectedSha256: String? = null,
         trace: InstallTrace? = null,
         onEntry: (String) -> Unit = {},
-    ): Boolean {
+    ) {
         // 第六十五批（必做 #2）：解包阶段给 UI 一路「已解 N 条 · 已用 T 秒」的读数。
-        // Rust 每 200 条目回调一次（CoreNative.onProgress），Java 回退逐条目回调；
-        // 两路都汇进 InstallPulse，节流 1Hz 后由 InstallFlow 接到状态行/通知栏。
+        // Rust 每 200 条目回调一次（CoreNative.onProgress）汇进 InstallPulse，
+        // 节流 1Hz 后由 InstallFlow 接到状态行/通知栏。
         InstallPulse.start()
         try {
-            if (com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
-                val rust = runCatching {
-                    val report = com.example.zhengdao.rust.CoreNative.extract(
-                        archive.canonicalPath,
-                        destDir.canonicalPath,
-                        expectedSha256,
-                        skipNames.toList(),
-                    )
-                    // BUG-1（2026-10-10）：Rust 报「可落盘 0 条目」= 这份包没东西可装，绝不回退 Java。
-                    // 新 .so 会在 Rust 侧就报 EmptyArchive（下面按 EMPTY_ARCHIVE_MARK 分流）；这条
-                    // 计数判断是给「新 Kotlin + 旧 .so」留的保险——旧 .so 会把 0 条目当成功回。
-                    if (report.first <= 0L) {
-                        throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）")
-                    }
-                    trace?.let {
-                        it.entries = report.first
-                        it.bytesWritten = report.second
-                        // Rust 流水线内部对恰好被解压的字节算一遍 sha256（extract.rs 步骤 1），
-                        // 无论有没有 expected 都会算 ⇒ 安装内部恒为 1 次，与调用方传不传无关。
-                        it.actualSha256 = report.third
-                        it.hashPasses += 1
-                    }
-                    Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
-                }
-                if (rust.isSuccess) return true
-                val err = rust.exceptionOrNull()
-                // 0 条目：上面那条计数判断抛的（旧 .so 路径）
-                if (err is InstallFailed) throw err
-                if (err is IllegalStateException && err.message?.contains(EMPTY_ARCHIVE_MARK) == true) {
-                    throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）：${err.message}")
-                }
-                // 完整性失败**不回退**：盘上这份包不是我们要装的那份（下载后被改动、缓存串了包，
-                // 或校验通过到解压之间被换掉）。回退 Java 只会把同一份坏包再解一遍，而 Java 路径
-                // 根本不校验 sha256 ⇒ 那就等于把校验悄悄降级成"没校验"。
-                if (err is IllegalStateException && err.message?.contains(SHA_MISMATCH_MARK) == true) {
-                    throw InstallFailed("安装包完整性校验失败（Rust 核心）：${err.message}")
-                }
-                // 旧 .so 没有 nativeExtractSkip 符号时也落到这里（JNI 查找失败 → UnsatisfiedLinkError），
-                // 于是"新 Kotlin + 旧 so"只让带跳过的补丁路径回退 Java，全量入口照常。
-                // ⚠️ 注意 `BadArchive` 必须留在这条回退里：Rust 只认 zstd/gzip，第三种魔数一律
-                //    `BadArchive("无法识别的压缩格式")`，而 Java 侧 `formatOf` 把未知魔数按**纯 tar**
-                //    处理（离线手选包就是纯 tar）——把它列进"不回退"会直接废掉纯 tar 包。
-                Log.w(TAG, "Rust 解压失败，回退 Java 路径（skip=${skipNames.size}）", err)
-                // 两套通道的计数口径不同（Rust 是累计值、Java 是本地计数），换道先清零。
-                InstallPulse.reset()
+            // T1 P2 第一档：`.so` 没加载起来（架构不符 / 被系统拦 / 包被裁掉）。
+            // 这一档以前直接走 Java 慢路径，现在明确失败。
+            if (!com.example.zhengdao.rust.CoreNative.isRustAvailable()) {
+                throw InstallFailed(
+                    refuseFallback(
+                        why = "解包组件未加载：libzhengdao_core.so 不可用",
+                        hint = "重装 App 后再试",
+                    ),
+                )
             }
-            val extracted = extractArchiveJava(archive, destDir, skipNames, onEntry)
-            trace?.entries = extracted.toLong()
-            // Java 回退不哈希：actualSha256 保持空 ⇒ 修复路径拿不到哈希就不写 env（下次老实全量）。
-            trace?.actualSha256 = ""
-            return false
+            val rust = runCatching {
+                val report = com.example.zhengdao.rust.CoreNative.extract(
+                    archive.canonicalPath,
+                    destDir.canonicalPath,
+                    expectedSha256,
+                    skipNames.toList(),
+                )
+                // BUG-1（2026-10-10）：Rust 报「可落盘 0 条目」= 这份包没东西可装，绝不回退 Java。
+                // 新 .so 会在 Rust 侧就报 EmptyArchive（下面按 EMPTY_ARCHIVE_MARK 分流）；这条
+                // 计数判断是给「新 Kotlin + 旧 .so」留的保险——旧 .so 会把 0 条目当成功回。
+                if (report.first <= 0L) {
+                    throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）")
+                }
+                trace?.let {
+                    it.entries = report.first
+                    it.bytesWritten = report.second
+                    // Rust 流水线内部对恰好被解压的字节算一遍 sha256（extract.rs 步骤 1），
+                    // 无论有没有 expected 都会算 ⇒ 安装内部恒为 1 次，与调用方传不传无关。
+                    it.actualSha256 = report.third
+                    it.hashPasses += 1
+                }
+                Log.i(TAG, "Rust 解压完成: ${report.first} 条目 ${report.second / 1048576}MB sha=${report.third.take(12)}")
+            }
+            if (rust.isSuccess) return
+            val err = rust.exceptionOrNull()
+            // 0 条目：上面那条计数判断抛的（旧 .so 路径）
+            if (err is InstallFailed) throw err
+            if (err is IllegalStateException && err.message?.contains(EMPTY_ARCHIVE_MARK) == true) {
+                throw InstallFailed("压缩包不含任何条目或格式不受支持（Rust 核心）：${err.message}")
+            }
+            // 完整性失败**不回退**：盘上这份包不是我们要装的那份（下载后被改动、缓存串了包，
+            // 或校验通过到解压之间被换掉）。回退 Java 只会把同一份坏包再解一遍，而 Java 路径
+            // 根本不校验 sha256 ⇒ 那就等于把校验悄悄降级成"没校验"。
+            if (err is IllegalStateException && err.message?.contains(SHA_MISMATCH_MARK) == true) {
+                throw InstallFailed("安装包完整性校验失败（Rust 核心）：${err.message}")
+            }
+            // T1 P2 第二档：以上都不是 ⇒ 流水线本身没跑通（IO 错误、旧 .so 缺 nativeExtractSkip
+            // 符号导致 JNI 查找失败、归档认不出来……）。以前这里 `Log.w` 一句就落回 Java 慢路径，
+            // 现在把原文交出去，并留下 FALLBACK_REFUSED 证据。
+            throw InstallFailed(
+                refuseFallback(
+                    why = "Rust 解包流水线失败：${err?.message ?: err?.javaClass?.simpleName ?: "未知原因"}",
+                    cause = err,
+                ),
+            )
         } finally {
             InstallPulse.stop()
         }
     }
 
     /**
+     * 记一条「拒绝回退」的证据，并返回给用户看的那句话（T1 P2）。
+     *
+     * 两处都写：`Log.e` 是 release 包里唯一能被 `adb logcat` 捞到的通道
+     * （RunLog 只在 DEBUG 构建镜像进 logcat，见 N-4），RunLog 那份则走设置页「导出日志」。
+     */
+    private fun refuseFallback(
+        why: String,
+        hint: String = "重进 App 可再试",
+        cause: Throwable? = null,
+    ): String {
+        val text = fallbackRefusedMessage(why, hint)
+        Log.e(TAG, "$FALLBACK_REFUSED：$why ⇒ $text", cause)
+        // 记日志这件事本身不得把失败路径再炸一次（JVM 单测里 RunLog 没 init）
+        runCatching { com.example.zhengdao.core.RunLog.log("$FALLBACK_REFUSED：$why ⇒ $text") }
+        return text
+    }
+
+    /**
      * Java 路径解包内核：支持 zstd / gzip / **纯 tar**（未知魔数按 tar 处理，见 [formatOf]）。
      *
-     * 抽出来是为了让 [RootfsDelta] 复用同一套类型处理（目录/软链/硬链/普通文件 + chmod +
-     * 防穿越），避免增量路径出现第二份"略有不同"的解包逻辑。
+     * ⚠️ T1（2026-10-28）之后**生产代码不再调用它**：[extractArchive] 只走 Rust，Rust 不可用
+     * 或流水线失败一律明确失败（[FALLBACK_REFUSED]）。它留在仓里的身份是 Rust 落盘语义的
+     * **对拍基准**——目录/软链/硬链/普通文件 + chmod + 防穿越，逐项与 `rust/core/src/extract.rs`
+     * 对照；改任何一边都要先看另一边，否则对拍就失去意义。
      *
      * @param skipNames 需要跳过的成员名（调用方给的是**去掉 `./` 前缀**后的名字）
-     * @return 实际解出的条目数（Rust 路径拿不到走这里时，计时汇总用它；调用方可忽略）
+     * @return 实际解出的条目数
      */
     fun extractArchiveJava(
         archive: File,
@@ -556,7 +623,7 @@ object RootfsInstaller {
                     val target = File(destDir, name)
                     checkPathInside(canonicalRoot, target)
                     onEntry("./$name")
-                    // 第六十五批：Java 回退也有逐条目回调，喂给同一路进度（节流在 InstallPulse 内）
+                    // 第六十五批：Java 路径也有逐条目回调，喂给同一路进度（节流在 InstallPulse 内）
                     InstallPulse.noteEntry(name)
                     extractEntry(entry, name, target, destDir, tar, pendingHardLinks)
                     extracted++

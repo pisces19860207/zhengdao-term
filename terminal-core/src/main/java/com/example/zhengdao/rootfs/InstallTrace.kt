@@ -53,29 +53,32 @@ class InstallTrace(
     /** 解包条目数（Rust 报告或 Java 计数）。 */
     @Volatile var entries: Long = 0L
 
-    /** 解包写出的字节数；拿不到（Java 回退）时保持 0，不编。 */
+    /** 解包写出的字节数；拿不到时保持 0，不编。 */
     @Volatile var bytesWritten: Long = 0L
 
-    /** Rust 回报的实际归档 sha256（hex 小写）；Java 回退或旧 .so 时为空。 */
+    /** Rust 回报的实际归档 sha256（hex 小写）；旧 .so 不回报时为空。 */
     @Volatile var actualSha256: String = ""
 
     /**
      * **安装内部**的整包哈希次数。
      *
      * Rust 解包流水线开解前会整读一遍算 sha256（`extract.rs` 步骤 1），无论有没有
-     * expected 都会算——这就是安装内部的那一遍，恒为 1（走 Rust 时）。Java 回退不哈希，为 0。
+     * expected 都会算——这就是安装内部的那一遍。T1（2026-10-28）之后生产只有 Rust 这一条
+     * 解包路 ⇒ 恒为 1；对拍基准那条 Java 路径（[RootfsInstaller.extractArchiveJava]）不哈希，为 0。
      */
     @Volatile var hashPasses: Int = 0
 
     /**
      * 调用方在**进入安装之前**做的独立整包哈希次数（下载时校验、修复前的 sha256Of 等）。
      *
-     * 第六十五批目标：修复路径把它从 1 降到 0（改由 Rust 回报的 actualSha256 判断同源），
-     * 更新路径保留下载时的那一遍（它是下载完整性的一部分，不在 install 内重复）。
+     * 第六十五批目标：修复路径把它从 1 降到 0（改由 Rust 回报的 actualSha256 判断同源）。
+     * T1 P1（2026-10-28）接着把**更新路径**的那一遍也去掉了：下载完不再单独整包哈希，
+     * 完整性交给 Rust 解包前的那一次流式校验（`needsPreExtractVerify` 钉住这条口径）。
+     * 只有 Rust 不可用时才还需要调用方自己校验一遍——而那种情况现在会明确失败，不装。
      */
     @Volatile var preHashPasses: Int = 0
 
-    /** 本进程内实际走了 Rust 还是 Java 回退（写进汇总，排障用）。 */
+    /** 本进程内实际走的解包路径（T1 之后生产恒为 `Rust`；写进汇总，排障用）。 */
     @Volatile var extractionPath: String = ""
 
     @Synchronized
